@@ -1,0 +1,20 @@
+{
+  "hosting": {
+    "public": ".next",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/__/hosting/entry"
+      }
+    ]
+  },
+  "functions": {
+    "source": ".",
+    "runtime": "nodejs20"
+  }
+}

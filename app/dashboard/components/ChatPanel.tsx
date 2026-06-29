@@ -1,6 +1,6 @@
 "use client";
 
-import React, { ReactNode, useState, useEffect } from "react";
+import React, { ReactNode, useState, useEffect, useRef } from "react";
 import AgentActionCard from "@/components/AgentActionCard";
 import { PendingAction } from "@/types";
 
@@ -88,6 +88,33 @@ export default function ChatPanel({
   textareaRef,
   renderMessageText,
 }: ChatPanelProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setIsDragging(true);
+    setStartX(e.pageX - el.offsetLeft);
+    setScrollLeft(el.scrollLeft);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const el = scrollRef.current;
+    if (!el) return;
+    const x = e.pageX - el.offsetLeft;
+    const walk = (x - startX) * 1.5;
+    el.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMouseUpOrLeave = () => {
+    setIsDragging(false);
+  };
+
   // Only display the welcome empty state if the user has not sent any message yet
   const showWelcomeEmptyState = messages.length <= 1 && !loadingText && messages[0]?.sender === "ai";
 
@@ -290,43 +317,66 @@ export default function ChatPanel({
       </div>
 
       {/* Quick suggestions area - horizontal scroll flex box */}
-      <div
-        className="px-4 py-2 flex flex-nowrap overflow-x-auto gap-2.5 scrollbar-thin pb-3 shrink-0"
-        style={{
-          background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.02)",
-          borderTop: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)",
-        }}
-      >
-        {[
-          { label: "📅 Sync Calendar", prompt: "Sync my calendar events for tomorrow" },
-          { label: "📨 Extension Email", prompt: "Draft an extension request email to Prof. Sharma" },
-          { label: "🔍 Check Conflicts", prompt: "Check for any scheduling conflicts today" },
-        ].map((chip, idx) => (
-          <button
-            key={idx}
-            onClick={() => setInputText(chip.prompt)}
-            className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap shrink-0"
-            style={{
-              border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)",
-              background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.03)",
-              color: "var(--text-muted)",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = isDark
-                ? "rgba(255,255,255,0.06)"
-                : "rgba(0,0,0,0.07)";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = isDark
-                ? "rgba(255,255,255,0.02)"
-                : "rgba(0,0,0,0.03)";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
-            }}
-          >
-            {chip.label}
-          </button>
-        ))}
+      <div className="relative shrink-0 select-none">
+        <div
+          ref={scrollRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUpOrLeave}
+          onMouseLeave={handleMouseUpOrLeave}
+          className={`px-4 py-2.5 flex flex-nowrap overflow-x-auto gap-2.5 scrollbar-none pb-2.5 shrink-0 cursor-grab ${
+            isDragging ? "cursor-grabbing" : ""
+          }`}
+          style={{
+            background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.02)",
+            borderTop: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)",
+          }}
+        >
+          {[
+            { label: "📅 Sync Calendar", prompt: "Sync my calendar events for tomorrow" },
+            { label: "📨 Extension Email", prompt: "Draft an extension request email to Prof. Sharma" },
+            { label: "🔍 Check Conflicts", prompt: "Check for any scheduling conflicts today" },
+          ].map((chip, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                // Only trigger search message click if they didn't drag
+                if (!isDragging) {
+                  setInputText(chip.prompt);
+                }
+              }}
+              className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap shrink-0 select-none"
+              style={{
+                border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)",
+                background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.03)",
+                color: "var(--text-muted)",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = isDark
+                  ? "rgba(255,255,255,0.06)"
+                  : "rgba(0,0,0,0.07)";
+                (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = isDark
+                  ? "rgba(255,255,255,0.02)"
+                  : "rgba(0,0,0,0.03)";
+                (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
+              }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+        {/* Right fade gradient overlay */}
+        <div
+          className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l z-10"
+          style={{
+            background: isDark
+              ? "linear-gradient(to left, rgba(20,30,55,0.95) 0%, transparent 100%)"
+              : "linear-gradient(to left, rgba(241,245,249,0.98) 0%, transparent 100%)",
+          }}
+        />
       </div>
 
       {/* Chat panel bottom input bar */}

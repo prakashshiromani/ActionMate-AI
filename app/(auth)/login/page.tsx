@@ -12,6 +12,7 @@ export default function LoginPage() {
 
   // Capture the sign-in redirect result when page loads/mounts after returning from Google
   useEffect(() => {
+    sessionStorage.clear();
     if (!auth || !auth.app) return;
 
     setLoading(true);
@@ -42,6 +43,7 @@ export default function LoginPage() {
     const provider = new GoogleAuthProvider();
     provider.addScope("https://www.googleapis.com/auth/calendar.events");
     provider.addScope("https://www.googleapis.com/auth/gmail.compose");
+    provider.setCustomParameters({ prompt: "select_account" });
 
     try {
       // If Firebase Auth is not configured, bypass login and enter Simulated Sandbox Mode
@@ -73,18 +75,19 @@ export default function LoginPage() {
         }
         router.push("/dashboard");
       } catch (popupError: any) {
-        console.warn("Popup blocked or failed, falling back to Redirect Mode:", popupError);
         if (popupError.code === "auth/popup-blocked" || popupError.code === "auth/cancelled-popup-request") {
+          console.warn("Popup blocked or failed, falling back to Redirect Mode:", popupError);
           await signInWithRedirect(auth, provider);
         } else {
           throw popupError;
         }
       }
     } catch (err: any) {
-      console.error("Google Sign-In Error:", err);
       if (err.code === "auth/popup-closed-by-user") {
+        console.warn("Google Sign-In: Popup closed by user.");
         setError("Sign-in popup was closed by user.");
       } else {
+        console.error("Google Sign-In Error:", err);
         setError(err.message || "Failed to sign in with Google. Please try again.");
       }
       setLoading(false);

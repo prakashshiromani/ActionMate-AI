@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { PendingAction } from "@/types";
+import { auth } from "@/lib/firebase";
 
 interface AgentActionCardProps {
   pendingActions: PendingAction[];
   taskId: string;
   onSuccess: (results: any[]) => void;
   onDismiss: () => void;
+  isAutopilot?: boolean;
 }
 
 export default function AgentActionCard({
@@ -15,6 +17,7 @@ export default function AgentActionCard({
   taskId,
   onSuccess,
   onDismiss,
+  isAutopilot = false,
 }: AgentActionCardProps) {
   const [actions, setActions] = useState<PendingAction[]>(pendingActions);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -41,14 +44,20 @@ export default function AgentActionCard({
 
     // Retrieve delegated access token from sessionStorage
     const googleAccessToken = sessionStorage.getItem("googleAccessToken") || "";
+    const idToken = auth?.currentUser ? await auth.currentUser.getIdToken() : "";
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "x-google-access-token": googleAccessToken,
+      };
+      if (idToken) {
+        headers["Authorization"] = `Bearer ${idToken}`;
+      }
+
       const response = await fetch("/api/agent/execute", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-google-access-token": googleAccessToken,
-        },
+        headers,
         body: JSON.stringify({
           approvedActions: actions,
           taskId,
@@ -71,7 +80,7 @@ export default function AgentActionCard({
 
   return (
     <div className="rounded-2xl border-2 border-transparent bg-gradient-to-tr from-accent-primary to-accent-ai p-[2px] shadow-2xl animate-fade-in w-full">
-      <div className="rounded-[14px] bg-bg-surface p-5 space-y-4">
+      <div className="rounded-[14px] bg-bg-surface p-4 space-y-3">
         
         {/* Header */}
         <div className="flex justify-between items-center pb-2 border-b border-border/50">
@@ -102,7 +111,7 @@ export default function AgentActionCard({
             const isCalendar = action.type === "CALENDAR_BLOCK";
 
             return (
-              <div key={index} className="space-y-3 p-3 rounded-xl bg-bg-base border border-border/30 min-w-0">
+              <div key={index} className="space-y-2.5 p-2.5 rounded-xl bg-bg-base border border-border/30 min-w-0">
                 <div className="flex justify-between items-start gap-2 min-w-0">
                   <div className="flex items-start gap-2.5 min-w-0 flex-1">
                     <span className="text-lg flex-shrink-0">{isCalendar ? "📅" : "📧"}</span>
@@ -183,7 +192,15 @@ export default function AgentActionCard({
                             <input
                               type="datetime-local"
                               value={action.payload.start_time ? action.payload.start_time.substring(0, 16) : ""}
-                              onChange={(e) => handleEditChange(index, "start_time", e.target.value)}
+                              onChange={(e) => {
+                                if (!e.target.value) return;
+                                const d = new Date(e.target.value);
+                                const offset = -d.getTimezoneOffset();
+                                const sign = offset >= 0 ? "+" : "-";
+                                const pad = (n: number) => String(n).padStart(2, "0");
+                                const iso = `${e.target.value}:00${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+                                handleEditChange(index, "start_time", iso);
+                              }}
                               className="w-full bg-bg-surface border border-border rounded-lg p-2 text-text-primary focus:outline-none focus:border-accent-primary"
                             />
                           </div>
@@ -192,7 +209,15 @@ export default function AgentActionCard({
                             <input
                               type="datetime-local"
                               value={action.payload.end_time ? action.payload.end_time.substring(0, 16) : ""}
-                              onChange={(e) => handleEditChange(index, "end_time", e.target.value)}
+                              onChange={(e) => {
+                                if (!e.target.value) return;
+                                const d = new Date(e.target.value);
+                                const offset = -d.getTimezoneOffset();
+                                const sign = offset >= 0 ? "+" : "-";
+                                const pad = (n: number) => String(n).padStart(2, "0");
+                                const iso = `${e.target.value}:00${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+                                handleEditChange(index, "end_time", iso);
+                              }}
                               className="w-full bg-bg-surface border border-border rounded-lg p-2 text-text-primary focus:outline-none focus:border-accent-primary"
                             />
                           </div>
@@ -237,32 +262,42 @@ export default function AgentActionCard({
         </div>
 
         {/* CTA Buttons */}
-        <div className="flex flex-col sm:flex-row gap-2 pt-2">
-          <button
-            onClick={handleApproveAll}
-            disabled={executing}
-            className="flex-1 bg-success hover:brightness-110 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2"
-          >
-            {executing ? (
-              <>
-                <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Executing...
-              </>
-            ) : (
-              "Approve & Execute All"
-            )}
-          </button>
-          <button
-            onClick={onDismiss}
-            disabled={executing}
-            className="bg-border/20 hover:bg-bg-raised disabled:opacity-50 text-text-primary font-bold py-2.5 px-4 rounded-xl text-xs transition-all border border-border"
-          >
-            Dismiss
-          </button>
-        </div>
+        {isAutopilot ? (
+          <div className="flex items-center justify-center gap-2 bg-accent-primary/10 border border-accent-primary/20 rounded-xl p-3 text-xs text-accent-primary font-bold animate-pulse w-full">
+            <svg className="animate-spin h-3.5 w-3.5 text-accent-primary" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            ⚡ Autopilot executing recommendation autonomously...
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row gap-2 pt-2">
+            <button
+              onClick={handleApproveAll}
+              disabled={executing}
+              className="flex-1 bg-success hover:brightness-110 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              {executing ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Executing...
+                </>
+              ) : (
+                "Approve & Execute All"
+              )}
+            </button>
+            <button
+              onClick={onDismiss}
+              disabled={executing}
+              className="bg-border/20 hover:bg-bg-raised disabled:opacity-50 text-text-primary font-bold py-2.5 px-4 rounded-xl text-xs transition-all border border-border"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
       </div>
     </div>

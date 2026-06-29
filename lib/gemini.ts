@@ -279,11 +279,13 @@ RULES:
 3. If a deadline is at risk (less than 24 hours and calendar is full), you MUST proactively call draft_gmail_email to prepare a backup extension request draft. Do not ask the user for permission in text first.
 4. If there is a calendar space or a need for a study session, you MUST proactively call block_calendar_slot to suggest blocking a focused work slot. Do not ask the user for permission in text first.
 5. All block_calendar_slot and draft_gmail_email calls will be caught as pending actions for the user to click and approve. Respond in your text message assuming the user will click "Approve & Execute" on these cards.
-6. When breaking down tasks, create 3-6 subtasks with realistic time estimates in minutes. Call the breakdown_task tool to format them.
+6. When a user introduces a new task, activity, or assignment, you MUST call breakdown_task to break it down into 3-6 detailed, action-oriented subtasks with realistic time estimates. Call breakdown_task tool to format them. Do NOT call breakdown_task, block_calendar_slot, or draft_gmail_email for simple greetings (like "hello", "hi"), casual talk, thank yous, or general questions that do not involve creating or scheduling a new task/activity.
 7. The user may write in Hinglish (Hindi + English mix). Understand it naturally. Respond in the same language they used.
 8. Be extremely direct and action-oriented. Do NOT ask clarifying questions or confirmation questions like "Should I draft the email?" or "Bataiye kya karna hai?". Instead, call the tools immediately so the cards appear on their screen.
-9. Current datetime will be injected into each message. Use it for all deadline calculations.
+9. Current datetime will be injected into each message (containing the user's local timezone offset, e.g., +05:30). Use it for all deadline calculations. When calling block_calendar_slot, ensure that the start_time and end_time have the same timezone offset as this current datetime, so events are scheduled at the user's correct local time.
 10. Make your text messages extremely scannable for busy users. Avoid long blocks of text. Highlight key facts (such as the specific **deadline**, **blocked calendar time slots**, **email recipient**, or **main action items**) using bold markdown (double asterisks around the text) and clean list items so they stand out immediately.
+11. If the user specifies an explicit start time and end time (or duration) for a calendar slot (e.g. "5 se 7 baje"), you MUST schedule it exactly as requested. Do NOT shorten, truncate, or shift the start/end times automatically due to conflicts. If there is a conflict, proceed with blocking the slot exactly as the user specified, and inform the user of the conflict in your text response.
+12. When asked to resolve a conflict, adjust a schedule, or reschedule slots (e.g., "Resolve conflict between..."), you MUST call the block_calendar_slot tool for the new/adjusted/non-overlapping time slots so that the user receives the updated action cards for approval. Do NOT just mention the new times in text; you MUST call the tools to present the action cards.
 
 TONE: Helpful, efficient, slightly casual. Like a capable friend who handles logistics.`;
 
@@ -296,6 +298,8 @@ export async function runAgentLoop(
   agentText: string;
   pendingActions: PendingAction[];
   suggestedSubtasks: Array<{ title: string; estimatedMinutes: number }>;
+  isTask: boolean;
+  conflict?: { message: string; details: string; actionPrompt: string } | null;
 }> {
   // Gemini chat history MUST start with a message from the 'user'.
   // We locate the first 'user' role message and slice the history from that point forward.
@@ -323,6 +327,8 @@ export async function runAgentLoop(
 
   const pendingActions: PendingAction[] = [];
   let suggestedSubtasks: Array<{ title: string; estimatedMinutes: number }> = [];
+  let isTask = false;
+  const allBusySlots: Array<{ start: string; end: string; summary?: string }> = [];
 
   // Agent execution loop
   let iterations = 0;
@@ -341,6 +347,7 @@ export async function runAgentLoop(
           const start = (args as any).date_range_start;
           const end = (args as any).date_range_end;
           const busySlots = await checkCalendarAvailability(googleAccessToken, start, end);
+          allBusySlots.push(...busySlots);
           functionResponses.push({
             functionResponse: {
               name,
@@ -356,6 +363,7 @@ export async function runAgentLoop(
           });
         }
       } else if (name === "breakdown_task") {
+        isTask = true;
         const payload = args as any;
         if (payload.subtasks && Array.isArray(payload.subtasks)) {
           suggestedSubtasks = payload.subtasks;
@@ -367,6 +375,7 @@ export async function runAgentLoop(
           },
         });
       } else if (name === "block_calendar_slot") {
+        isTask = true;
         // Intercept block_calendar_slot and queue as pending action
         const payload = args as any;
         pendingActions.push({
@@ -388,6 +397,7 @@ export async function runAgentLoop(
           },
         });
       } else if (name === "draft_gmail_email") {
+        isTask = true;
         // Intercept draft_gmail_email and queue as pending action
         const payload = args as any;
         pendingActions.push({
@@ -420,8 +430,8 @@ export async function runAgentLoop(
     response = result.response;
   }
 
-  // Fallback to default subtasks only if none were dynamically generated
-  if (suggestedSubtasks.length === 0) {
+  // Fallback to default subtasks only if none were dynamically generated and this is a task
+  if (isTask && suggestedSubtasks.length === 0) {
     suggestedSubtasks = [
       { title: "Review instructions & gather references", estimatedMinutes: 30 },
       { title: "Draft core contents & structure schema", estimatedMinutes: 60 },
@@ -429,10 +439,69 @@ export async function runAgentLoop(
     ];
   }
 
+  // Check for calendar conflicts: directly query calendar for each pending CALENDAR_BLOCK action.
+  // This ensures conflict detection works even if the AI skipped check_calendar_availability.
+  let conflict = null;
+  for (const action of pendingActions) {
+    if (action.type === "CALENDAR_BLOCK") {
+      const startStr = action.payload.start_time as string | undefined;
+      const endStr = action.payload.end_time as string | undefined;
+      if (!startStr || !endStr) continue;
+
+      const blockStart = new Date(startStr).getTime();
+      const blockEnd = new Date(endStr).getTime();
+
+      // Extract date from the start time (YYYY-MM-DD)
+      const blockDate = startStr.split("T")[0];
+
+      // Fetch fresh calendar events for the block date to catch any events
+      // not in allBusySlots (e.g. when AI skipped check_calendar_availability)
+      let slotsToCheck = allBusySlots;
+      try {
+        const freshSlots = await checkCalendarAvailability(googleAccessToken, blockDate, blockDate);
+        // Merge with allBusySlots and deduplicate by start time
+        const merged = [...allBusySlots];
+        for (const fresh of freshSlots) {
+          if (!merged.some(s => s.start === fresh.start)) {
+            merged.push(fresh);
+          }
+        }
+        slotsToCheck = merged;
+      } catch (_) {
+        // Ignore errors — fall back to allBusySlots
+      }
+
+      for (const slot of slotsToCheck) {
+        const slotStart = new Date(slot.start).getTime();
+        const slotEnd = new Date(slot.end).getTime();
+
+        if (blockStart < slotEnd && blockEnd > slotStart) {
+          // Ignore self-conflict when rescheduling the same task (titles match)
+          const actionTitle = (action.payload.title || "").replace(/^Deep Work:\s*/i, "").trim().toLowerCase();
+          const slotTitle = ((slot as any).summary || "").replace(/^Deep Work:\s*/i, "").trim().toLowerCase();
+          if (actionTitle === slotTitle && actionTitle !== "") {
+            continue;
+          }
+
+          // Conflict detected!
+          conflict = {
+            message: "Schedule conflict detected",
+            details: `"${action.payload.title}" overlaps with "${(slot as any).summary || 'Busy Slot'}" at ${new Date(slot.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+            actionPrompt: `Resolve conflict between "${action.payload.title}" and "${(slot as any).summary || 'Busy Slot'}"`
+          };
+          break;
+        }
+      }
+      if (conflict) break;
+    }
+  }
+
   return {
     agentText: response.text() || "I have analyzed your request.",
     pendingActions,
     suggestedSubtasks,
+    isTask,
+    conflict,
   };
 }
 

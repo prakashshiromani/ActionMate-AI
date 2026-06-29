@@ -64,8 +64,18 @@ export async function draftGmailEmail(
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Google Gmail API draft error: ${response.status} - ${errText}`);
+    let cleanErr = `${response.status}: Failed to create Gmail draft`;
+    try {
+      const errText = await response.text();
+      const errJson = JSON.parse(errText);
+      const msg =
+        errJson?.error?.message ||
+        errJson?.error?.errors?.[0]?.message ||
+        errJson?.message ||
+        errText;
+      cleanErr = `${response.status}: ${msg}`;
+    } catch { /* ignore parse errors */ }
+    throw new Error(`Gmail draft failed — ${cleanErr}`);
   }
 
   return response.json();

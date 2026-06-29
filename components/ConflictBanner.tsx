@@ -11,14 +11,7 @@ interface ConflictBannerProps {
 export default function ConflictBanner({ message, details, onResolve }: ConflictBannerProps) {
   const [visible, setVisible] = useState(true);
 
-  // Auto-dismiss banner after 8 seconds of no interaction to prevent visual fatigue
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setVisible(false);
-    }, 8000);
 
-    return () => clearTimeout(timer);
-  }, []);
 
   if (!visible) return null;
 

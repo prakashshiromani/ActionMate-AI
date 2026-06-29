@@ -5,13 +5,25 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code");
-    const userId = searchParams.get("state"); // We passed the firebase user uid in the state param
+    const rawState = searchParams.get("state") ?? "";
+
+    // State format: "uid:nonce" (URL-decoded)
+    const decodedState = decodeURIComponent(rawState);
+    const colonIdx = decodedState.indexOf(":");
+    const userId = colonIdx !== -1 ? decodedState.slice(0, colonIdx) : decodedState;
+    const nonce = colonIdx !== -1 ? decodedState.slice(colonIdx + 1) : null;
 
     if (!code || !userId) {
       return NextResponse.json(
         { error: "Authorization code and user state (uid) are required" },
         { status: 400 }
       );
+    }
+
+    // Verify nonce from cookie to prevent CSRF account-linking attacks
+    const cookieNonce = req.cookies.get("oauth_nonce")?.value;
+    if (nonce && cookieNonce && nonce !== cookieNonce) {
+      return NextResponse.json({ error: "Invalid OAuth state — CSRF check failed" }, { status: 403 });
     }
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -67,9 +79,7 @@ export async function GET(req: NextRequest) {
     if (refreshToken) {
       updatePayload.googleRefreshToken = refreshToken;
     }
-    if (accessToken) {
-      updatePayload.googleAccessToken = accessToken;
-    }
+    // accessToken is short-lived — not stored to reduce sensitive data exposure
 
     await userDocRef.set(updatePayload, { merge: true });
 

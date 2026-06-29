@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, ReactNode } from "react";
 import Link from "next/link";
-import AgentActionCard from "@/components/AgentActionCard";
 import ConflictBanner from "@/components/ConflictBanner";
 import SubtaskList from "@/components/SubtaskList";
 import AgentActivityLog from "@/components/AgentActivityLog";
@@ -11,6 +10,17 @@ import { PendingAction } from "@/types";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { collection, query, where, getDocs, doc, updateDoc, setDoc, getDoc, deleteDoc, onSnapshot, deleteField, serverTimestamp } from "firebase/firestore";
+
+// Import modular sub-components
+import Sidebar from "./components/Sidebar";
+import MobileNav from "./components/MobileNav";
+import ChatPanel from "./components/ChatPanel";
+import DashboardView from "./components/DashboardView";
+import TasksView from "./components/TasksView";
+import CalendarView from "./components/CalendarView";
+import CompletedView from "./components/CompletedView";
+import LogsView from "./components/LogsView";
+import SettingsView from "./components/SettingsView";
 
 interface MockTask {
   id: string;
@@ -29,6 +39,7 @@ interface ChatMessage {
   taskId?: string;
   executed?: boolean;
   dismissed?: boolean;
+  timestamp?: Date;
 }
 
 interface SettingsState {
@@ -109,12 +120,18 @@ export default function Dashboard() {
   const recognitionRef = useRef<any>(null);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<"general" | "ai" | "integrations" | "notifications" | "logs">("general");
   const [settingsState, setSettingsState] = useState<SettingsState>(defaultSettings);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { sender: "ai", text: "Hey! Aryan here, ready to resolve your tasks. What's on your plate today?" }
+    { sender: "ai", text: "Hey! I'm ActionMate — ready to resolve your tasks. What's on your plate today?", timestamp: new Date() }
   ]);
+
+  // Clear chat handler
+  const handleClearChat = () => {
+    if (confirm("Clear all chat history? This cannot be undone.")) {
+      setMessages([{ sender: "ai", text: "Chat cleared. What would you like to work on?", timestamp: new Date() }]);
+    }
+  };
   
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState<string | null>(null);
@@ -126,6 +143,8 @@ export default function Dashboard() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isDark, setIsDark] = useState(true); // default dark
+  // SSR-safe desktop detector — avoids window.innerWidth in JSX
+  const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -135,6 +154,11 @@ export default function Dashboard() {
     setIsDark(dark);
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
 
+    // SSR-safe desktop detection
+    const checkDesktop = () => setIsDesktop(window.innerWidth >= 768);
+    checkDesktop();
+    window.addEventListener("resize", checkDesktop);
+
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("googleConnected") === "true") {
@@ -142,6 +166,8 @@ export default function Dashboard() {
         alert("🎉 Google Calendar & Gmail connected successfully for silent sync!");
       }
     }
+
+    return () => window.removeEventListener("resize", checkDesktop);
   }, []);
 
   const toggleTheme = () => {
@@ -150,7 +176,6 @@ export default function Dashboard() {
     document.documentElement.setAttribute("data-theme", next ? "dark" : "light");
     localStorage.setItem("theme", next ? "dark" : "light");
   };
-
 
   // Resizable Chat Panel states & logic
   const [chatWidth, setChatWidth] = useState(340);
@@ -213,8 +238,6 @@ export default function Dashboard() {
     return () => clearTimeout(timer);
   }, []);
 
-
-
   // Check Google OAuth token on load and display warning if missing
   useEffect(() => {
     if (!isLoaded) return;
@@ -229,11 +252,15 @@ export default function Dashboard() {
   const handleConnectSilentSync = () => {
     const currentUser = auth?.currentUser;
     if (!currentUser) return;
-    
+
+    const nonce = crypto.randomUUID();
+    sessionStorage.setItem("oauth_nonce", nonce);
+    document.cookie = `oauth_nonce=${nonce}; path=/; max-age=300; SameSite=Lax`;
+
     const clientId = "690561405622-mnpgte0fbt7gvi7c3u635dc8u4gap0gn.apps.googleusercontent.com";
     const redirectUri = encodeURIComponent(window.location.origin + "/api/auth/google-callback");
     const scopes = encodeURIComponent("https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.compose");
-    const state = currentUser.uid;
+    const state = encodeURIComponent(`${currentUser.uid}:${nonce}`);
 
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scopes}&access_type=offline&prompt=select_account%20consent&state=${state}`;
   };
@@ -252,17 +279,16 @@ export default function Dashboard() {
           updatedAt: serverTimestamp()
         });
         sessionStorage.removeItem("googleAccessToken");
+        document.cookie = "actionmate_auth=; path=/; max-age=0";
       } catch (err) {
         console.error("Failed to disconnect silent sync:", err);
       }
     }
   };
 
-  // Re-authorize Google OAuth inline (popup) without losing dashboard state
   const handleReAuthorize = async () => {
     setReAuthLoading(true);
     try {
-      // Sandbox / no-Firebase mode — just use mock token
       if (!auth || !auth.app) {
         sessionStorage.setItem("googleAccessToken", "mock-sandbox-token");
         setAuthError(null);
@@ -273,7 +299,6 @@ export default function Dashboard() {
       const provider = new GoogleAuthProvider();
       provider.addScope("https://www.googleapis.com/auth/calendar.events");
       provider.addScope("https://www.googleapis.com/auth/gmail.compose");
-      // Force account selection and consent checkboxes so Google displays permission selection screen
       provider.setCustomParameters({ prompt: "select_account consent" });
 
       const result = await signInWithPopup(auth, provider);
@@ -298,15 +323,12 @@ export default function Dashboard() {
     }
   };
 
-
-
   const [activeConflict, setActiveConflict] = useState<{
     message: string;
     details: string;
     actionPrompt: string;
   } | null>(null);
 
-  // Dynamic state for task lists to update them on action success
   const [tasks, setTasks] = useState<MockTask[]>([
     {
       id: "1",
@@ -346,7 +368,6 @@ export default function Dashboard() {
     }
   ]);
 
-  // Subtask list mapping
   const [subtasksMap, setSubtasksMap] = useState<Record<string, any[]>>({
     "1": [
       { subtaskId: "s1", title: "Read DBMS Chapter 4 - ER Diagrams", estimatedMinutes: 30, completed: false, completedAt: null },
@@ -372,20 +393,21 @@ export default function Dashboard() {
     ]
   });
 
-  // Agent activity logs mapping
   const [actionsMap, setActionsMap] = useState<Record<string, any[]>>({
     "1": [
-      { actionType: "CALENDAR_BLOCK", status: "executed", executedAt: new Date(Date.now() - 3600000), detail: "Blocked Sunday 10 AM - 12 PM" },
-      { actionType: "GMAIL_DRAFT", status: "executed", executedAt: new Date(Date.now() - 3550000), detail: "Gmail Draft saved to Prof. Sharma" }
+      { actionType: "CALENDAR_BLOCK", status: "executed", executedAt: new Date(Date.now() - 3600000), detail: "Relational schema study slot" },
+      { actionType: "GMAIL_DRAFT", status: "executed", executedAt: new Date(Date.now() - 1800000), detail: "Extension request to Prof. Sharma" }
     ],
     "2": [
+      { actionType: "CALENDAR_BLOCK", status: "executed", executedAt: new Date(Date.now() - 7200000), detail: "Slide content prep block" },
       { actionType: "CONFLICT_DETECTED", status: "executed", executedAt: new Date(Date.now() - 7200000), detail: "Deadline conflict detected at 5 PM" }
     ],
     "3": [
       { actionType: "TASK_BREAKDOWN", status: "executed", executedAt: new Date(Date.now() - 86400000), detail: "Autonomously generated subtask breakdown" }
     ],
     "4": []
-  });  // Fetch real-time tasks & logs from Firestore (if logged in) or LocalStorage (if Sandbox)
+  });
+
   useEffect(() => {
     if (!auth || typeof auth.onAuthStateChanged !== "function") {
       setIsLoaded(true);
@@ -396,7 +418,6 @@ export default function Dashboard() {
     let unsubscribeTasks: (() => void) | null = null;
     let safetyTimeout: NodeJS.Timeout | null = null;
 
-    // Safety timeout: If Firestore takes more than 2 seconds to load, fall back to localStorage
     safetyTimeout = setTimeout(() => {
       console.warn("Firestore load timed out. Falling back to local storage cache.");
       const cachedTasks = localStorage.getItem("sandboxTasks");
@@ -425,7 +446,6 @@ export default function Dashboard() {
     }, 2000);
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      // Clean up previous listeners if any
       if (unsubscribeSettings) {
         unsubscribeSettings();
         unsubscribeSettings = null;
@@ -438,7 +458,6 @@ export default function Dashboard() {
       if (user && db && db.app) {
         setLoadingText("Fetching your workspace tasks and logs...");
         
-        // 1. Settings listener
         const userDocRef = doc(db, "users", user.uid);
         unsubscribeSettings = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -453,7 +472,6 @@ export default function Dashboard() {
           console.warn("Settings snapshot listener failed:", err);
         });
 
-        // 2. Tasks listener
         const tasksRef = collection(db, "tasks");
         const q = query(tasksRef, where("userId", "==", user.uid));
         unsubscribeTasks = onSnapshot(q, (querySnapshot) => {
@@ -530,7 +548,6 @@ export default function Dashboard() {
           clearTimeout(safetyTimeout);
           safetyTimeout = null;
         }
-        // Fallback to LocalStorage for Sandbox Mode
         const cachedTasks = localStorage.getItem("sandboxTasks");
         const cachedSubtasks = localStorage.getItem("sandboxSubtasks");
         const cachedActions = localStorage.getItem("sandboxActions");
@@ -572,16 +589,13 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Save state to localStorage whenever it changes (Sandbox primary storage & Offline backup cache)
   useEffect(() => {
-    if (!isLoaded) return; // Do not save until loading completes
-
+    if (!isLoaded) return;
     localStorage.setItem("sandboxTasks", JSON.stringify(tasks));
     localStorage.setItem("sandboxSubtasks", JSON.stringify(subtasksMap));
     localStorage.setItem("sandboxActions", JSON.stringify(actionsMap));
   }, [tasks, subtasksMap, actionsMap, isLoaded]);
 
-  // Auto-save settings to Firestore or LocalStorage when settingsState changes (debounced)
   useEffect(() => {
     if (!mounted) return;
     
@@ -620,7 +634,9 @@ export default function Dashboard() {
   }, [settingsState, mounted]);
 
   const handleResetToDefaults = () => {
-    setSettingsState(defaultSettings);
+    if (confirm("Are you sure you want to reset all preferences to defaults? This will overwrite your current settings.")) {
+      setSettingsState(defaultSettings);
+    }
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -628,7 +644,6 @@ export default function Dashboard() {
     if (!confirmed) return;
 
     try {
-      // 1. Remove from local states
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
       setSubtasksMap((prev) => {
         const copy = { ...prev };
@@ -641,10 +656,8 @@ export default function Dashboard() {
         return copy;
       });
 
-      // 2. Go back to main dashboard
       setSelectedTask(null);
 
-      // 3. Remove from Firestore if authenticated and not a mock task
       const currentUser = auth?.currentUser;
       const isMockTask = taskId === "1" || taskId === "2" || taskId === "3" || taskId === "4";
       if (currentUser && db && db.app && !isMockTask) {
@@ -723,7 +736,6 @@ export default function Dashboard() {
     if (!selectedTask) return;
     const taskId = selectedTask.id;
 
-    // Update subtasksMap
     setSubtasksMap((prev) => {
       const copy = { ...prev };
       const list = copy[taskId] || [];
@@ -738,7 +750,6 @@ export default function Dashboard() {
       return copy;
     });
 
-    // Update progress counters in tasks list
     setTasks((prev) => {
       return prev.map((t) => {
         if (t.id === taskId) {
@@ -747,8 +758,14 @@ export default function Dashboard() {
             st.subtaskId === subtaskId ? completed : st.completed
           ).length;
 
-          // Auto complete task if all subtasks are finished
           const status = completedCount === t.subtasksCount ? "completed" as const : t.status;
+
+          if (status === "completed" && t.status !== "completed") {
+            setTimeout(() => {
+              setSelectedTask(null);
+              setActiveTab("completed");
+            }, 800);
+          }
 
           return {
             ...t,
@@ -760,7 +777,6 @@ export default function Dashboard() {
       });
     });
 
-    // Sync selectedTask state
     setSelectedTask((prev) => {
       if (!prev) return null;
       const list = subtasksMap[taskId] || [];
@@ -774,7 +790,6 @@ export default function Dashboard() {
       };
     });
 
-    // Sync subtask checkbox toggle to Firestore if user is authenticated and it is not a mock task
     const currentUser = auth?.currentUser;
     const isMockTask = taskId === "1" || taskId === "2" || taskId === "3" || taskId === "4";
     if (currentUser && db && db.app && !isMockTask) {
@@ -809,11 +824,10 @@ export default function Dashboard() {
     if (!inputText.trim()) return;
     
     const userPrompt = inputText;
-    const newMessages = [...messages, { sender: "user" as const, text: userPrompt }];
+    const newMessages = [...messages, { sender: "user" as const, text: userPrompt, timestamp: new Date() }];
     setMessages(newMessages);
     setInputText("");
     
-    // Cycle loading states during API call
     const loadingIntervals = [
       "Parsing your task...",
       "Checking your calendar for availability...",
@@ -881,7 +895,6 @@ export default function Dashboard() {
         setActiveConflict(null);
       }
       
-      // Update UI with real AI response
       setMessages((prev) => [
         ...prev,
         {
@@ -890,7 +903,8 @@ export default function Dashboard() {
             ? `${data.agentText}\n\n⚡ **Autopilot Mode Active:** Executing the recommended actions autonomously...`
             : data.agentText,
           actions: data.pendingActions && data.pendingActions.length > 0 ? data.pendingActions : undefined,
-          taskId: data.taskId
+          taskId: data.taskId,
+          timestamp: new Date()
         }
       ]);
 
@@ -900,9 +914,7 @@ export default function Dashboard() {
         }, 500);
       }
 
-      // If new task was created, add it to lanes dynamically
       if (data.taskId && data.suggestedSubtasks) {
-        // Parse simulated deadline from userPrompt
         let apiSimulatedDeadline = "Tomorrow";
         const lowerPrompt = userPrompt.toLowerCase();
         if (lowerPrompt.includes("today")) {
@@ -932,7 +944,6 @@ export default function Dashboard() {
           return [newTask, ...prev];
         });
 
-        // Add subtasks to map
         setSubtasksMap((prev) => {
           if (prev[data.taskId]) return prev;
           return {
@@ -947,7 +958,6 @@ export default function Dashboard() {
           };
         });
 
-        // Add empty actions history
         setActionsMap((prev) => {
           if (prev[data.taskId]) return prev;
           return {
@@ -961,7 +971,6 @@ export default function Dashboard() {
           };
         });
 
-        // Sync new task to Firestore if authenticated
         const currentUser = auth?.currentUser;
         if (currentUser && db && db.app) {
           try {
@@ -1007,7 +1016,6 @@ export default function Dashboard() {
         setTimeout(async () => {
           setLoadingText(null);
 
-          // Simple heuristic to extract dynamic topic/subject from the prompt
           let topic = "Assignment";
           if (userPrompt.toLowerCase().includes("uml")) {
             topic = "UML Diagrams Assignment";
@@ -1016,7 +1024,6 @@ export default function Dashboard() {
           } else if (userPrompt.toLowerCase().includes("presentation")) {
             topic = "Presentation slides";
           } else {
-            // Extract a generic action name
             const cleanPrompt = userPrompt.replace(/hi|hello|please|help|me|i am|prakash/gi, "").trim();
             topic = cleanPrompt.length > 40 ? `${cleanPrompt.substring(0, 37)}...` : cleanPrompt || "Assignment";
           }
@@ -1051,7 +1058,8 @@ export default function Dashboard() {
                 ? `I've analyzed your request for **${topic}**.\n\n⚡ **Autopilot Mode Active:** I'm scheduling your deep work slot and drafting the email to **Prof. Sharma** autonomously...`
                 : `I've analyzed your request for **${topic}**. \n\nI found a schedule conflict:\n• **Schedule Conflict:** Your calendar is busy tomorrow.\n• **Action Block:** Suggesting a study/deep work slot.\n• **Backup Plan:** Drafted an extension email to **Prof. Sharma** in your Gmail Drafts.\n\nPlease approve the action cards below:`,
               actions: mockActions,
-              taskId: mockTaskId
+              taskId: mockTaskId,
+              timestamp: new Date()
             }
           ]);
 
@@ -1061,7 +1069,6 @@ export default function Dashboard() {
             }, 500);
           }
 
-          // Simple parsing of deadline text from userPrompt for realistic sandbox testing
           let simulatedDeadline = "Tomorrow";
           const lowerPrompt = userPrompt.toLowerCase();
           if (lowerPrompt.includes("today")) {
@@ -1077,7 +1084,6 @@ export default function Dashboard() {
             }
           }
 
-          // Add subtasks and logs to lists dynamically
           setTasks((prev) => {
             if (prev.some(t => t.id === mockTaskId)) return prev;
             return [
@@ -1117,7 +1123,6 @@ export default function Dashboard() {
             };
           });
 
-          // Sync simulated sandbox task to Firestore if authenticated
           const currentUser = auth?.currentUser;
           if (currentUser && db && db.app) {
             try {
@@ -1146,7 +1151,6 @@ export default function Dashboard() {
           }
         }, 1000);
       } else {
-        // Render actual error bubble to guide real OAuth users
         setMessages((prev) => [
           ...prev,
           {
@@ -1203,7 +1207,6 @@ export default function Dashboard() {
     const gmailSuccess = gmailResult ? gmailResult.status === "success" : true;
     const allSuccess = calendarSuccess && gmailSuccess;
 
-    // Safely update message executed state
     setMessages((prev) => {
       const copy = [...prev];
       if (copy[index]) {
@@ -1221,17 +1224,14 @@ export default function Dashboard() {
     if (calendarResult) {
       if (calendarSuccess) {
         text += `\n📅 Scheduled the calendar block. [Open Google Calendar](https://calendar.google.com)`;
-        setActiveConflict(null); // Clear conflict banner on successful execution
+        setActiveConflict(null);
       } else {
-        // Extract clean error message — strip raw JSON noise
         const rawDetail = calendarResult.detail || "";
         let cleanMsg = rawDetail;
-        // Try to extract just the meaningful part (before large JSON dump)
         const dashIdx = rawDetail.lastIndexOf(" — ");
         if (dashIdx !== -1) cleanMsg = rawDetail.substring(dashIdx + 3);
-        // Truncate at 120 chars
         if (cleanMsg.length > 120) cleanMsg = cleanMsg.substring(0, 117) + "...";
-        text += `\n⚠️ Calendar scheduling failed: ${cleanMsg}`;
+        text += `\n⚠️ Calendar block failed: ${cleanMsg}`;
         if (rawDetail.includes("401") || rawDetail.includes("403") || rawDetail.toLowerCase().includes("unauthorized") || rawDetail.toLowerCase().includes("credentials")) {
           hasAuthError = true;
         }
@@ -1257,14 +1257,15 @@ export default function Dashboard() {
     if (hasAuthError) {
       setAuthError("Google OAuth permission missing or expired. Click 'Re-Authorize' and ensure you CHECK the checkboxes for Calendar and Gmail permissions on the Google login screen.");
     } else {
-      setAuthError(null); // Clear any old OAuth errors on successful execution!
+      setAuthError(null);
     }
 
     setMessages((prev) => [
       ...prev,
       {
         sender: "ai" as const,
-        text
+        text,
+        timestamp: new Date()
       }
     ]);
 
@@ -1282,7 +1283,6 @@ export default function Dashboard() {
         });
       });
 
-      // Update actions map status to executed
       setActionsMap((prev) => {
         const copy = { ...prev };
         const list = copy[taskId] || [];
@@ -1294,7 +1294,6 @@ export default function Dashboard() {
         return copy;
       });
 
-      // Sync task execution status to Firestore if authenticated
       const currentUser = auth?.currentUser;
       const isMockTask = taskId === "1" || taskId === "2" || taskId === "3" || taskId === "4";
       if (currentUser && db && db.app && !isMockTask) {
@@ -1391,7 +1390,6 @@ export default function Dashboard() {
         });
       });
 
-      // Update actions map status to rejected
       setActionsMap((prev) => {
         const copy = { ...prev };
         const list = copy[taskId] || [];
@@ -1402,7 +1400,6 @@ export default function Dashboard() {
         return copy;
       });
 
-      // Sync dismissal to Firestore if authenticated and task is not mock
       const currentUser = auth?.currentUser;
       const isMockTask = taskId ? (taskId === "1" || taskId === "2" || taskId === "3" || taskId === "4") : true;
       if (currentUser && db && db.app && taskId && !isMockTask) {
@@ -1452,379 +1449,27 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* SIDEBAR */}
-      <aside
-        className="hidden md:flex flex-col justify-between py-5 w-14 hover:w-56 flex-shrink-0 overflow-hidden border-r transition-all duration-300 ease-in-out group z-20"
-        style={{
-          background: isDark
-            ? "linear-gradient(180deg, #0f172a 0%, #131e35 60%, #0f172a 100%)"
-            : "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 60%, #f8fafc 100%)",
-          backdropFilter: "blur(20px)",
-          borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)",
-          boxShadow: isDark
-            ? "inset -1px 0 0 rgba(255,255,255,0.04), 4px 0 24px rgba(0,0,0,0.35)"
-            : "inset -1px 0 0 rgba(0,0,0,0.05), 4px 0 24px rgba(0,0,0,0.06)"
-        }}
-      >
-        {/* TOP: Logo + Nav */}
-        <div className="flex flex-col gap-7 w-full">
-          {/* Logo Mark */}
-          <div className="px-2 group-hover:px-4 flex items-center justify-center group-hover:justify-start gap-3 w-full">
-            <div
-              className="relative flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-2xl text-white shadow-lg"
-              style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)", boxShadow: "0 0 20px rgba(139,92,246,0.4)" }}
-            >
-              {/* Robot SVG icon */}
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="3" y="8" width="18" height="13" rx="3" fill="white" fillOpacity="0.9"/>
-                <path d="M9 8V6a3 3 0 016 0v2" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
-                <circle cx="9" cy="14" r="1.5" fill="#3B82F6"/>
-                <circle cx="15" cy="14" r="1.5" fill="#8B5CF6"/>
-                <path d="M9 18h6" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              {/* Pulsing dot */}
-              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-400 border-2 animate-pulse" style={{ borderColor: "var(--bg-base)" }} />
-            </div>
-            <div className="opacity-0 group-hover:opacity-100 transition-all duration-200 overflow-hidden">
-              <p className="text-sm font-bold text-text-primary whitespace-nowrap leading-tight">ActionMate</p>
-              <p className="text-[10px] text-blue-400 whitespace-nowrap">AI Productivity</p>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="mx-4 h-px" style={{ background: "var(--border)", opacity: 0.3 }} />
-
-          {/* Nav Items */}
-          <nav className="flex flex-col gap-1 w-full px-2 group-hover:px-3">
-            {[
-              {
-                id: "dashboard",
-                label: "Dashboard",
-                icon: (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <rect x="3" y="3" width="7" height="7" rx="1.5" fill="currentColor" fillOpacity="0.9"/>
-                    <rect x="14" y="3" width="7" height="7" rx="1.5" fill="currentColor" fillOpacity="0.5"/>
-                    <rect x="3" y="14" width="7" height="7" rx="1.5" fill="currentColor" fillOpacity="0.5"/>
-                    <rect x="14" y="14" width="7" height="7" rx="1.5" fill="currentColor" fillOpacity="0.9"/>
-                  </svg>
-                )
-              },
-              {
-                id: "tasks",
-                label: "Tasks",
-                icon: (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )
-              },
-              {
-                id: "calendar",
-                label: "Calendar",
-                icon: (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
-                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                    <circle cx="7" cy="14" r="1" fill="currentColor" />
-                    <circle cx="12" cy="14" r="1" fill="currentColor" />
-                    <circle cx="17" cy="14" r="1" fill="currentColor" />
-                    <circle cx="7" cy="18" r="1" fill="currentColor" />
-                    <circle cx="12" cy="18" r="1" fill="currentColor" />
-                    <circle cx="17" cy="18" r="1" fill="currentColor" />
-                  </svg>
-                )
-              },
-              {
-                id: "logs",
-                label: "Agent Logs",
-                icon: (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/>
-                    <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                )
-              },
-              {
-                id: "settings",
-                label: "Settings",
-                icon: (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/>
-                    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="2"/>
-                  </svg>
-                )
-              },
-            ].map((item) => {
-              const isActive = activeTab === item.id && !selectedTask;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setSelectedTask(null);
-                  }}
-                  className="relative flex items-center justify-center group-hover:justify-start gap-0 group-hover:gap-3.5 w-full text-left rounded-xl transition-all duration-200 group/btn px-2.5 group-hover:px-3 py-2.5"
-                  style={{
-                    background: isActive
-                      ? "linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(139,92,246,0.15) 100%)"
-                      : "transparent",
-                    boxShadow: isActive ? "inset 0 0 0 1px rgba(139,92,246,0.2), 0 4px 12px rgba(59,130,246,0.05)" : "none",
-                    color: isActive ? "var(--text-primary)" : "var(--text-muted)",
-                  }}
-                >
-                  {/* Active left bar */}
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full"
-                      style={{ background: "linear-gradient(180deg, #3B82F6, #8B5CF6)" }}
-                    />
-                  )}
-                  {/* Icon */}
-                  <span
-                    className="flex-shrink-0 transition-all duration-200"
-                    style={{
-                      color: isActive ? "var(--accent-primary)" : "inherit",
-                      filter: isActive ? "drop-shadow(0 0 4px rgba(139,92,246,0.4))" : "none",
-                    }}
-                  >
-                    {item.icon}
-                  </span>
-                  {/* Label */}
-                  <span
-                    className="opacity-0 group-hover:opacity-100 transition-all duration-200 font-semibold text-sm whitespace-nowrap overflow-hidden w-0 group-hover:w-auto"
-                    style={{ color: isActive ? "var(--text-primary)" : "var(--text-muted)" }}
-                  >
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* BOTTOM: Theme Toggle + User Profile */}
-        <div className="px-2 group-hover:px-3 flex flex-col gap-2">
-          {/* Divider */}
-          <div className="mb-1 h-px" style={{ background: "var(--border)", opacity: 0.3 }} />
-
-          {/* Theme Toggle Button */}
-          <button
-            onClick={toggleTheme}
-            title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            className="relative flex items-center justify-center group-hover:justify-start gap-0 group-hover:gap-3.5 w-full text-left rounded-xl transition-all duration-200 px-2.5 group-hover:px-3 py-2.5"
-            style={{
-              background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.05)",
-              border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}`,
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.09)")}
-            onMouseLeave={e => (e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.05)")}
-          >
-            {/* Icon: Moon or Sun */}
-            <span className="flex-shrink-0" style={{ color: isDark ? "#93c5fd" : "#F59E0B" }}>
-              {isDark ? (
-                /* Moon icon */
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z" />
-                </svg>
-              ) : (
-                /* Sun icon */
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="5" />
-                  <line x1="12" y1="1" x2="12" y2="3" />
-                  <line x1="12" y1="21" x2="12" y2="23" />
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                  <line x1="1" y1="12" x2="3" y2="12" />
-                  <line x1="21" y1="12" x2="23" y2="12" />
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                </svg>
-              )}
-            </span>
-
-            {/* Label - only visible when sidebar expanded */}
-            <span
-              className="opacity-0 group-hover:opacity-100 transition-all duration-200 font-semibold text-sm whitespace-nowrap w-0 overflow-hidden group-hover:w-auto group-hover:flex-1"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {isDark ? "Dark Mode" : "Light Mode"}
-            </span>
-
-            {/* Pill Toggle */}
-            <span
-              className="opacity-0 group-hover:opacity-100 transition-all duration-200 flex-shrink-0 w-0 overflow-hidden group-hover:w-auto"
-            >
-              <span
-                className="flex items-center rounded-full p-0.5 transition-all duration-300"
-                style={{
-                  width: "32px",
-                  height: "18px",
-                  background: isDark ? "rgba(59,130,246,0.4)" : "rgba(245,158,11,0.4)",
-                  border: `1px solid ${isDark ? "rgba(59,130,246,0.5)" : "rgba(245,158,11,0.5)"}`,
-                  justifyContent: isDark ? "flex-start" : "flex-end"
-                }}
-              >
-                <span
-                  className="rounded-full shadow-sm"
-                  style={{
-                    width: "12px",
-                    height: "12px",
-                    background: isDark ? "#93c5fd" : "#F59E0B",
-                  }}
-                />
-              </span>
-            </span>
-          </button>
-
-          {/* User Profile */}
-          <div
-            className="flex items-center justify-between group-hover:justify-start gap-0 group-hover:gap-3 w-full rounded-xl p-1 group-hover:p-2 cursor-pointer transition-all duration-200 mb-2"
-            style={{ background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)" }}
-            onMouseEnter={e => (e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)")}
-            onMouseLeave={e => (e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)")}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="relative flex-shrink-0">
-                <div
-                  className="h-9 w-9 rounded-xl flex items-center justify-center text-[13px] font-bold text-white shadow-md"
-                  style={{ background: "linear-gradient(135deg, #8B5CF6, #3B82F6)" }}
-                >
-                  {(auth?.currentUser?.displayName || auth?.currentUser?.email || "Aryan Mehta").charAt(0).toUpperCase()}
-                </div>
-                {/* Online dot */}
-                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-400 border-2" style={{ borderColor: "var(--bg-base)" }} />
-              </div>
-              <div className="opacity-0 group-hover:opacity-100 transition-all duration-200 min-w-0 w-0 overflow-hidden group-hover:w-auto">
-                <p className="text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: "var(--text-primary)", maxWidth: "100px" }}>
-                  {auth?.currentUser?.displayName || auth?.currentUser?.email?.split("@")[0] || "Aryan Mehta"}
-                </p>
-                <p className="text-[10px] whitespace-nowrap" style={{ color: "var(--text-muted)" }}>Pro Plan · Active</p>
-              </div>
-            </div>
-            {auth?.currentUser && (
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (confirm("Are you sure you want to sign out of ActionMate?")) {
-                    try {
-                      const { signOut } = await import("firebase/auth");
-                      await signOut(auth);
-                      sessionStorage.clear();
-                      localStorage.removeItem("sandboxTasks");
-                      localStorage.removeItem("sandboxSubtasks");
-                      localStorage.removeItem("sandboxActions");
-                      localStorage.removeItem("sandboxSettings");
-                      window.location.href = "/login";
-                    } catch (err) {
-                      console.error("Sign out failed:", err);
-                    }
-                  }
-                }}
-                className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-1.5 hover:bg-error/10 text-text-muted hover:text-error rounded-lg transition-colors ml-auto hidden group-hover:block shrink-0"
-                title="Sign Out"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-      </aside>
-
-      {/* MOBILE BOTTOM NAVIGATION */}
-      <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-20"
-        style={{
-          background: isDark ? "rgba(15,23,42,0.95)" : "rgba(248,250,252,0.95)",
-          backdropFilter: "blur(20px)",
-          borderTop: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(0,0,0,0.08)",
-          boxShadow: isDark ? "0 -8px 32px rgba(0,0,0,0.4)" : "0 -8px 32px rgba(0,0,0,0.08)"
-        }}
-      >
-        <div className="flex justify-around items-center h-16 px-2">
-          {[
-            {
-              id: "dashboard", label: "Home",
-              icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" fill="currentColor" fillOpacity="0.9"/><rect x="14" y="3" width="7" height="7" rx="1.5" fill="currentColor" fillOpacity="0.5"/><rect x="3" y="14" width="7" height="7" rx="1.5" fill="currentColor" fillOpacity="0.5"/><rect x="14" y="14" width="7" height="7" rx="1.5" fill="currentColor" fillOpacity="0.9"/></svg>
-            },
-            {
-              id: "tasks", label: "Tasks",
-              icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            },
-            {
-              id: "calendar", label: "Calendar",
-              icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                  <circle cx="7" cy="14" r="1" fill="currentColor" />
-                  <circle cx="12" cy="14" r="1" fill="currentColor" />
-                  <circle cx="17" cy="14" r="1" fill="currentColor" />
-                  <circle cx="7" cy="18" r="1" fill="currentColor" />
-                  <circle cx="12" cy="18" r="1" fill="currentColor" />
-                  <circle cx="17" cy="18" r="1" fill="currentColor" />
-                </svg>
-              )
-            },
-            {
-              id: "logs", label: "Logs",
-              icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-            },
-            {
-              id: "settings", label: "Settings",
-              icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="2"/></svg>
-            },
-          ].map((item) => {
-            const isActive = activeTab === item.id && !selectedTask;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setSelectedTask(null);
-                }}
-                className="relative flex flex-col items-center justify-center gap-1 flex-1 py-2 rounded-xl transition-all duration-200"
-                style={{ color: isActive ? "#93c5fd" : "#475569" }}
-              >
-                {isActive && (
-                  <span
-                    className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full"
-                    style={{ background: "linear-gradient(90deg, #3B82F6, #8B5CF6)" }}
-                  />
-                )}
-                <span style={{ filter: isActive ? "drop-shadow(0 0 6px rgba(147,197,253,0.6))" : "none" }}>
-                  {item.icon}
-                </span>
-                <span
-                  className="text-[10px] font-semibold"
-                  style={{ color: isActive ? "#93c5fd" : "#475569" }}
-                >
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+      {/* SIDEBAR NAVIGATION */}
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab}
+        selectedTask={selectedTask}
+        setSelectedTask={setSelectedTask}
+        isDark={isDark}
+        toggleTheme={toggleTheme}
+        auth={auth}
+      />
 
       {/* MAIN CONTAINER */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden pb-16 md:pb-0">
         
-        {/* CENTER CONTENT */}
+        {/* CENTER CONTENT VIEW */}
         <section className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-8">
           
           {loading ? (
             <SkeletonLoader variant="task" count={4} />
           ) : selectedTask ? (
-            // TASK DETAIL SIDE SHEET ROUTE SPEC
+            // TASK DETAIL VIEW
             <div className="space-y-6 animate-fade-in pb-10">
               <div className="flex items-center justify-between pb-4 border-b border-border/50">
                 <button 
@@ -1870,1565 +1515,104 @@ export default function Dashboard() {
               <AgentActivityLog 
                 actions={actionsMap[selectedTask.id] || []}
               />
-
-            </div>
-          ) : activeTab === "dashboard" ? (
-            // DASHBOARD ROUTE SPEC
-            <>
-              <div className="flex justify-between items-center">
-                <div>
-                  <h1 className="text-2xl font-extrabold tracking-tight">Today's Focus</h1>
-                  <p className="text-text-muted text-sm mt-1">Ready to manage and complete your commitments.</p>
-                </div>
-                <button 
-                  onClick={() => {
-                    setChatOpen(true);
-                    setInputText("");
-                    setMessages((prev) => [
-                      ...prev,
-                      {
-                        sender: "ai",
-                        text: "Sure! 📝 Tell me about the new task you'd like to create. Include details like the subject, deadline, or any specific requirements — I'll break it down and set it up for you."
-                      }
-                    ]);
-                  }}
-                  className="bg-accent-primary hover:brightness-110 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 shadow-lg transition-all duration-200"
-                >
-                  <span>+</span> Add Task
-                </button>
-              </div>
-
-
-
-              {/* Conflict detected Alert Banner */}
-              {activeConflict ? (
-                <ConflictBanner 
-                  key={activeConflict.details}
-                  message={activeConflict.message}
-                  details={activeConflict.details}
-                  onResolve={() => {
-                    setChatOpen(true);
-                    setInputText(activeConflict.actionPrompt);
-                    setActiveConflict(null);
-                  }}
-                />
-              ) : (
-                tasks.some(t => t.title.toLowerCase().includes("dbms") && t.status !== "completed") && 
-                tasks.some(t => (t.title.toLowerCase().includes("presentation") || t.title.toLowerCase().includes("client")) && t.status !== "completed") && (
-                  <ConflictBanner 
-                    message="Deadline conflict in 6 hrs"
-                    details="DBMS Assignment vs. Client Presentation at 5:00 PM."
-                    onResolve={() => {
-                      setChatOpen(true);
-                      setInputText("Resolve DBMS Assignment vs Client Presentation conflict");
-                    }}
-                  />
-                )
-              )}
-
-              {/* Lanes */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                
-                {/* High Lane */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 font-bold text-sm tracking-wide text-error uppercase">
-                    <span className="h-2 w-2 rounded-full bg-error animate-pulse" /> High Priority
-                  </div>
-                  <div className="space-y-3">
-                    {tasks.filter(t => t.priority === "high").map(task => (
-                      <div 
-                        key={task.id} 
-                        onClick={() => setSelectedTask(task)}
-                        className="p-3 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between h-32 cursor-pointer"
-                      >
-                        <div>
-                          <div className="flex justify-between items-start gap-2">
-                            <h4 className="font-bold text-base line-clamp-1">{task.title}</h4>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                              task.status === "scheduled" ? "bg-success/10 text-success" : task.status === "completed" ? "bg-success/15 text-success border border-success/30" : "bg-accent-ai/10 text-accent-ai"
-                            }`}>
-                              {task.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-text-muted mt-1">{task.deadlineText}</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between text-[10px] font-bold text-text-muted">
-                            <span>Progress</span>
-                            <span>{task.completedSubtasksCount}/{task.subtasksCount} subtasks</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-bg-raised rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-accent-primary" 
-                              style={{ width: `${(task.completedSubtasksCount / task.subtasksCount) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Medium Lane */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 font-bold text-sm tracking-wide text-warning uppercase">
-                    <span className="h-2 w-2 rounded-full bg-warning" /> Medium Priority
-                  </div>
-                  <div className="space-y-3">
-                    {tasks.filter(t => t.priority === "medium").map(task => (
-                      <div 
-                        key={task.id} 
-                        onClick={() => setSelectedTask(task)}
-                        className="p-3 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between h-32 cursor-pointer"
-                      >
-                        <div>
-                          <div className="flex justify-between items-start gap-2">
-                            <h4 className="font-bold text-base line-clamp-1">{task.title}</h4>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                              task.status === "completed" ? "bg-success/15 text-success border border-success/30" : "bg-warning/10 text-warning"
-                            }`}>
-                              {task.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-text-muted mt-1">{task.deadlineText}</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between text-[10px] font-bold text-text-muted">
-                            <span>Progress</span>
-                            <span>{task.completedSubtasksCount}/{task.subtasksCount} subtasks</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-bg-raised rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-success" 
-                              style={{ width: `${(task.completedSubtasksCount / task.subtasksCount) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Low Lane */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 font-bold text-sm tracking-wide text-text-muted uppercase">
-                    <span className="h-2 w-2 rounded-full bg-text-muted" /> Low Priority
-                  </div>
-                  <div className="space-y-3">
-                    {tasks.filter(t => t.priority === "low").map(task => (
-                      <div 
-                        key={task.id} 
-                        onClick={() => setSelectedTask(task)}
-                        className="p-3 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between h-32 cursor-pointer"
-                      >
-                        <div>
-                          <div className="flex justify-between items-start gap-2">
-                            <h4 className="font-bold text-base line-clamp-1">{task.title}</h4>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-warning/10 text-warning">
-                              {task.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-text-muted mt-1">{task.deadlineText}</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between text-[10px] font-bold text-text-muted">
-                            <span>Progress</span>
-                            <span>{task.completedSubtasksCount}/{task.subtasksCount} subtasks</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-bg-raised rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-warning" 
-                              style={{ width: `${(task.completedSubtasksCount / task.subtasksCount) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-              </div>
-
-              {/* Upcoming Timeline — dynamic from tasks state */}
-              {(() => {
-                // Build Mon–Sun columns for the current week
-                const now = mounted ? new Date() : new Date(0);
-                // Monday = 0 offset
-                const dayOfWeek = now.getDay(); // 0=Sun,1=Mon,...,6=Sat
-                const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-                const monday = new Date(now);
-                monday.setDate(now.getDate() + mondayOffset);
-                monday.setHours(0, 0, 0, 0);
-
-                const weekDays = Array.from({ length: 7 }, (_, i) => {
-                  const d = new Date(monday);
-                  d.setDate(monday.getDate() + i);
-                  return d;
-                });
-
-                const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-                // Parse deadlineText into a Date (best-effort)
-                const parseDeadline = (text: string): Date | null => {
-                  if (!text) return null;
-                  const lower = text.toLowerCase();
-                  const base = new Date(now);
-                  base.setHours(23, 59, 0, 0);
-
-                  if (lower.startsWith("today")) return base;
-                  if (lower.startsWith("yesterday")) {
-                    const d = new Date(base);
-                    d.setDate(d.getDate() - 1);
-                    return d;
-                  }
-                  if (lower.startsWith("tomorrow")) {
-                    const d = new Date(base);
-                    d.setDate(d.getDate() + 1);
-                    return d;
-                  }
-                  // Try native parse — handles "June 29, 2:00 PM" etc.
-                  const parsed = new Date(text);
-                  if (!isNaN(parsed.getTime())) return parsed;
-                  return null;
-                };
-
-                // Count non-completed tasks per weekday column
-                const counts = weekDays.map((wd) => {
-                  const wd0 = new Date(wd); wd0.setHours(0, 0, 0, 0);
-                  const wd1 = new Date(wd); wd1.setHours(23, 59, 59, 999);
-                  return tasks.filter((t) => {
-                    if (t.status === "completed") return false;
-                    const d = parseDeadline(t.deadlineText);
-                    return d && d >= wd0 && d <= wd1;
-                  }).length;
-                });
-
-                const getLoad = (count: number) => {
-                  if (count === 0) return "free";
-                  if (count === 1) return "low";
-                  if (count <= 2) return "medium";
-                  return "high";
-                };
-
-                const todayIdx = (() => {
-                  const t = new Date(now); t.setHours(0,0,0,0);
-                  return weekDays.findIndex(d => d.getTime() === t.getTime());
-                })();
-
-                return (
-                  <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-lg">Upcoming Timeline</h3>
-                      <span className="text-[10px] text-text-muted font-mono">
-                        {mounted ? `Week of ${monday.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-7 gap-2 text-center">
-                      {weekDays.map((wd, i) => {
-                        const count = counts[i];
-                        const load = getLoad(count);
-                        const isToday = i === todayIdx;
-                        return (
-                          <div
-                            key={i}
-                            className="flex flex-col items-center py-3 rounded-xl hover:bg-bg-raised transition-colors duration-250 cursor-pointer"
-                            style={isToday ? { background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)" } : {}}
-                          >
-                            <span className={`text-xs font-bold ${isToday ? "text-accent-primary" : "text-text-muted"}`}>
-                              {DAY_LABELS[i]}
-                            </span>
-                            {isToday && <span className="text-[9px] text-accent-primary font-bold mt-0.5">Today</span>}
-                            <div className="h-10 flex items-center justify-center mt-1">
-                              {load === "free" && <span className="h-1.5 w-1.5 rounded-full bg-border" />}
-                              {load === "low" && <span className="h-2 w-2 rounded-full bg-success animate-pulse" />}
-                              {load === "medium" && (
-                                <div className="flex gap-0.5">
-                                  <span className="h-2 w-2 rounded-full bg-warning" />
-                                  <span className="h-2 w-2 rounded-full bg-warning" />
-                                </div>
-                              )}
-                              {load === "high" && (
-                                <div className="flex flex-col gap-0.5">
-                                  <div className="flex gap-0.5">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-error" />
-                                    <span className="h-1.5 w-1.5 rounded-full bg-error" />
-                                  </div>
-                                  <div className="flex gap-0.5">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-error" />
-                                    <span className="h-1.5 w-1.5 rounded-full bg-error" />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-text-muted mt-1">{count} task{count !== 1 ? "s" : ""}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-            </>
-          ) : activeTab === "tasks" ? (
-            // TASKS ROUTE SPEC
-            <div className="space-y-6 animate-fade-in">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h1 className="text-3xl font-extrabold tracking-tight">Your Tasks</h1>
-                  <p className="text-text-muted text-sm mt-1">Manage and track your custom subtask breakdowns.</p>
-                </div>
-                <button 
-                  onClick={() => {
-                    setChatOpen(true);
-                    setInputText("");
-                    setMessages((prev) => [
-                      ...prev,
-                      {
-                        sender: "ai",
-                        text: "Sure! 📝 Tell me about the new task you'd like to create. Include details like the subject, deadline, or any specific requirements — I'll break it down and set it up for you."
-                      }
-                    ]);
-                  }}
-                  className="bg-accent-primary hover:brightness-110 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 shadow-lg transition-all duration-200"
-                >
-                  <span>+</span> New Task
-                </button>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                <div className="divide-y divide-border/50">
-                  {tasks.length === 0 ? (
-                    <p className="text-sm text-text-muted italic text-center py-6">No tasks available. Use the assistant on the right to create one.</p>
-                  ) : (
-                    tasks.map((task) => (
-                      <div 
-                        key={task.id} 
-                        onClick={() => setSelectedTask(task)}
-                        className="py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-bg-raised/30 px-3 -mx-3 rounded-xl cursor-pointer transition-colors"
-                      >
-                        <div className="space-y-1">
-                          <h4 className="font-bold text-base text-text-primary leading-tight">{task.title}</h4>
-                          <p className="text-xs text-text-muted flex items-center gap-1">📅 Due: {task.deadlineText}</p>
-                        </div>
-                        <div className="flex items-center gap-3 self-end sm:self-auto">
-                          <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                            task.priority === "high" ? "bg-error/15 text-error" : task.priority === "medium" ? "bg-warning/15 text-warning" : "bg-text-muted/15 text-text-muted"
-                          }`}>
-                            {task.priority}
-                          </span>
-                          <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                            task.status === "completed" ? "bg-success/15 text-success" : task.status === "scheduled" ? "bg-success/10 text-success" : "bg-accent-ai/10 text-accent-ai"
-                          }`}>
-                            {task.status}
-                          </span>
-                          <span className="text-xs text-text-muted font-mono bg-bg-base px-2 py-1 rounded border border-border/30">
-                            {task.completedSubtasksCount}/{task.subtasksCount} subtasks
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : activeTab === "calendar" ? (
-            // CALENDAR ROUTE SPEC
-            <div className="space-y-6 animate-fade-in pb-10">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h1 className="text-3xl font-extrabold tracking-tight">Calendar</h1>
-                  <p className="text-text-muted text-sm mt-1">View your monthly commitments and deadlines.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setCalendarDate(new Date())}
-                    className="bg-bg-surface hover:bg-bg-raised text-text-primary border border-border px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-                  >
-                    Today
-                  </button>
-                  <div className="flex items-center bg-bg-surface border border-border rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
-                      className="px-3 py-1.5 hover:bg-bg-raised text-text-primary text-xs font-bold transition border-r border-border"
-                    >
-                      ←
-                    </button>
-                    <span className="px-4 py-1.5 text-xs font-bold text-text-primary min-w-[120px] text-center">
-                      {calendarDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                    </span>
-                    <button
-                      onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
-                      className="px-3 py-1.5 hover:bg-bg-raised text-text-primary text-xs font-bold transition border-l border-border"
-                    >
-                      →
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {(() => {
-                const year = calendarDate.getFullYear();
-                const month = calendarDate.getMonth();
-                const firstDay = new Date(year, month, 1);
-                const startDayOfWeek = firstDay.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-                const offset = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1; // start on Monday
-                const totalDays = new Date(year, month + 1, 0).getDate();
-                const prevTotalDays = new Date(year, month, 0).getDate();
-
-                const cells: { date: Date; isCurrentMonth: boolean }[] = [];
-
-                // Prev month padding
-                for (let i = offset - 1; i >= 0; i--) {
-                  cells.push({
-                    date: new Date(year, month - 1, prevTotalDays - i),
-                    isCurrentMonth: false
-                  });
-                }
-
-                // Current month days
-                for (let i = 1; i <= totalDays; i++) {
-                  cells.push({
-                    date: new Date(year, month, i),
-                    isCurrentMonth: true
-                  });
-                }
-
-                // Next month padding to standard 42 cell grid
-                const remaining = 42 - cells.length;
-                for (let i = 1; i <= remaining; i++) {
-                  cells.push({
-                    date: new Date(year, month + 1, i),
-                    isCurrentMonth: false
-                  });
-                }
-
-                const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-
-                // Helper to parse deadline (same logic as timeline)
-                const parseDeadline = (text: string): Date | null => {
-                  if (!text) return null;
-                  const lower = text.toLowerCase();
-                  const base = new Date();
-                  base.setHours(23, 59, 0, 0);
-
-                  if (lower.startsWith("today")) return base;
-                  if (lower.startsWith("yesterday")) {
-                    const d = new Date(base);
-                    d.setDate(d.getDate() - 1);
-                    return d;
-                  }
-                  if (lower.startsWith("tomorrow")) {
-                    const d = new Date(base);
-                    d.setDate(d.getDate() + 1);
-                    return d;
-                  }
-                  const parsed = new Date(text);
-                  if (!isNaN(parsed.getTime())) return parsed;
-                  return null;
-                };
-
-                const getTasksForDate = (date: Date) => {
-                  const d0 = new Date(date); d0.setHours(0, 0, 0, 0);
-                  const d1 = new Date(date); d1.setHours(23, 59, 59, 999);
-                  return tasks.filter((t) => {
-                    if (t.status === "completed") return false;
-                    const deadlineDate = parseDeadline(t.deadlineText);
-                    return deadlineDate && deadlineDate >= d0 && deadlineDate <= d1;
-                  });
-                };
-
-                const selectedDayTasks = selectedCalendarDate ? getTasksForDate(selectedCalendarDate) : [];
-
-                return (
-                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    {/* Calendar grid wrapper */}
-                    <div className="lg:col-span-3 rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      {/* Week headers */}
-                      <div className="grid grid-cols-7 gap-2">
-                        {DAY_LABELS.map((day, idx) => (
-                          <span key={idx} className="text-xs font-bold text-text-muted text-center py-2">
-                            {day}
-                          </span>
-                        ))}
-                      </div>
-
-                      {/* Day cells grid */}
-                      <div className="grid grid-cols-7 gap-2">
-                        {cells.map((cell, idx) => {
-                          const dateTasks = getTasksForDate(cell.date);
-                          const cellTime = new Date(cell.date); cellTime.setHours(0,0,0,0);
-                          const isToday = cellTime.getTime() === today.getTime();
-                          const isSelected = selectedCalendarDate && cellTime.getTime() === new Date(selectedCalendarDate).setHours(0,0,0,0);
-
-                          return (
-                            <div
-                              key={idx}
-                              onClick={() => setSelectedCalendarDate(cell.date)}
-                              className={`aspect-square p-2 rounded-xl flex flex-col justify-between cursor-pointer transition border hover:bg-bg-raised/50 ${
-                                isSelected 
-                                  ? "border-accent-primary bg-accent-primary/5 shadow-[0_0_12px_rgba(59,130,246,0.15)]" 
-                                  : isToday 
-                                    ? "border-accent-primary/30 bg-accent-primary/5" 
-                                    : "border-border/40"
-                              } ${
-                                cell.isCurrentMonth ? "text-text-primary" : "text-text-muted opacity-40"
-                              }`}
-                            >
-                              <div className="flex justify-between items-center">
-                                <span className={`text-xs font-bold ${isToday ? "text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded-md" : ""}`}>
-                                  {cell.date.getDate()}
-                                </span>
-                                {dateTasks.length > 0 && (
-                                  <span className="text-[9px] px-1 bg-border/50 rounded text-text-muted font-mono font-bold">
-                                    {dateTasks.length}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Task Priority Indicator dots */}
-                              {dateTasks.length > 0 && (
-                                <div className="flex gap-1 flex-wrap overflow-hidden h-4 items-center">
-                                  {dateTasks.slice(0, 3).map((t, tIdx) => (
-                                    <span
-                                      key={tIdx}
-                                      className={`h-1.5 w-1.5 rounded-full ${
-                                        t.priority === "high" ? "bg-error" : t.priority === "medium" ? "bg-warning" : "bg-text-muted"
-                                      }`}
-                                      title={t.title}
-                                    />
-                                  ))}
-                                  {dateTasks.length > 3 && (
-                                    <span className="text-[7px] text-text-muted font-bold font-mono">
-                                      +{dateTasks.length - 3}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Selected Day Details Panel */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4 h-fit flex flex-col">
-                      <div className="border-b border-border/50 pb-3">
-                        <h3 className="font-bold text-base">Day Details</h3>
-                        <p className="text-xs text-text-muted mt-0.5">
-                          {selectedCalendarDate 
-                            ? selectedCalendarDate.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })
-                            : "Select a date to view tasks"
-                          }
-                        </p>
-                      </div>
-
-                      {selectedCalendarDate ? (
-                        <div className="space-y-3 flex-1 overflow-y-auto max-h-[350px]">
-                          {selectedDayTasks.length === 0 ? (
-                            <p className="text-xs text-text-muted italic py-4 text-center">No tasks scheduled for this day.</p>
-                          ) : (
-                            selectedDayTasks.map((t) => (
-                              <div
-                                key={t.id}
-                                onClick={() => setSelectedTask(t)}
-                                className="p-3 rounded-xl border border-border/60 bg-bg-base hover:bg-bg-raised cursor-pointer transition flex flex-col justify-between gap-2"
-                              >
-                                <div className="space-y-1">
-                                  <h4 className="font-bold text-xs line-clamp-2 text-text-primary leading-snug">{t.title}</h4>
-                                  <span className={`text-[8px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
-                                    t.priority === "high" ? "bg-error/10 text-error" : t.priority === "medium" ? "bg-warning/10 text-warning" : "bg-text-muted/10 text-text-muted"
-                                  }`}>
-                                    {t.priority}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between items-center text-[9px] text-text-muted">
-                                  <span>Progress: {t.completedSubtasksCount}/{t.subtasksCount}</span>
-                                  <span className="font-semibold text-accent-primary">Open →</span>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-10 text-center text-text-muted">
-                          <span className="text-2xl mb-2">📅</span>
-                          <p className="text-xs">Click on any date in the calendar grid to see scheduled tasks and details.</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          ) : activeTab === "logs" ? (
-            // LOGS ROUTE SPEC
-            <div className="space-y-6 animate-fade-in">
-              <div>
-                <h1 className="text-3xl font-extrabold tracking-tight">Agent Activity Logs</h1>
-                <p className="text-text-muted text-sm mt-1">Audit trail of all autonomous checks, calendar blocks, and drafts.</p>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-bg-surface p-6">
-                {(() => {
-                  const allActions = Object.entries(actionsMap).flatMap(([taskId, list]) => {
-                    const task = tasks.find(t => t.id === taskId);
-                    return list.map(act => ({
-                      ...act,
-                      taskTitle: task?.title || "System Process"
-                    }));
-                  });
-
-                  if (allActions.length === 0) {
-                    return <p className="text-sm text-text-muted italic text-center py-8">No activity logs recorded yet.</p>;
-                  }
-
-                  return (
-                    <div className="relative pl-6 space-y-6 border-l-2 border-accent-primary/30 ml-3">
-                      {allActions.map((action, i) => {
-                        const isCompleted = action.status === "executed" || action.status === "approved";
-                        const isFailed = action.status === "failed";
-                        let statusColor = "bg-warning";
-                        let statusText = "Pending Approval";
-                        if (isCompleted) {
-                          statusColor = "bg-success";
-                          statusText = "Executed";
-                        } else if (isFailed) {
-                          statusColor = "bg-error";
-                          statusText = "Failed";
-                        }
-
-                        let icon = "⚙️";
-                        if (action.actionType === "CALENDAR_BLOCK") icon = "📅";
-                        if (action.actionType === "GMAIL_DRAFT") icon = "📧";
-                        if (action.actionType === "CONFLICT_DETECTED") icon = "⚠️";
-
-                        return (
-                          <div key={i} className="relative group font-mono text-xs">
-                            <span className={`absolute -left-[31px] top-1.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-bg-surface ${statusColor} shadow-sm`} />
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-text-muted text-[10px]">
-                                  {action.executedAt ? new Date(action.executedAt).toLocaleTimeString() : "Pending"}
-                                </span>
-                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
-                                  isCompleted ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
-                                }`}>
-                                  {statusText}
-                                </span>
-                              </div>
-                              <p className="text-text-primary text-sm font-semibold flex items-center gap-2">
-                                <span>{icon}</span> {action.detail}
-                              </p>
-                              <p className="text-[10px] text-text-muted italic">Task context: {action.taskTitle}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
             </div>
           ) : (
-            // SETTINGS ROUTE SPEC
-            <div className="space-y-6 animate-fade-in pb-10">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h1 className="text-3xl font-extrabold tracking-tight">Settings</h1>
-                  <p className="text-text-muted text-sm mt-1">Configure your workspace preferences and integrations.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleResetToDefaults}
-                    className="bg-bg-surface hover:bg-error/10 hover:text-error hover:border-error/30 text-text-primary border border-border px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 active:scale-95 shadow-sm cursor-pointer"
-                  >
-                    Reset to Defaults
-                  </button>
-                </div>
-              </div>
-
-              {/* Sub-tabs selector */}
-              <div className="flex border-b border-border/50 gap-4 mb-6">
-                {[
-                  { id: "general", label: "General" },
-                  { id: "ai", label: "AI Assistant" },
-                  { id: "integrations", label: "Integrations" },
-                  { id: "notifications", label: "Notifications" },
-                  { id: "logs", label: "System Logs" }
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveSettingsTab(t.id as any)}
-                    className={`pb-2.5 text-sm font-semibold border-b-2 transition-all relative ${
-                      activeSettingsTab === t.id
-                        ? "border-accent-primary text-text-primary"
-                        : "border-transparent text-text-muted hover:text-text-primary"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-
-                {/* Auto-save success indicator */}
-                {showSaveSuccess && (
-                  <span className="ml-auto text-xs text-success font-semibold flex items-center gap-1 animate-fade-in">
-                    <span>✓</span> Changes saved to Firestore
-                  </span>
-                )}
-              </div>
-
-              {/* Tab Content rendering */}
-              <div className="min-h-[400px]">
-                {activeSettingsTab === "general" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Work hours & days card */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      <h3 className="text-lg font-bold text-text-primary">Work Preferences</h3>
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-text-muted uppercase">Start Hour</span>
-                            <div className="relative">
-                              <input
-                                type="time"
-                                value={settingsState.workHours.start}
-                                onChange={(e) => setSettingsState({
-                                  ...settingsState,
-                                  workHours: { ...settingsState.workHours, start: e.target.value }
-                                })}
-                                style={{ colorScheme: "dark" }}
-                                className="w-full bg-bg-base border border-border rounded-lg p-2 pr-10 text-xs text-text-primary focus:outline-none focus:border-accent-primary relative z-10"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted z-20 pointer-events-none">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <circle cx="12" cy="12" r="10" />
-                                  <polyline points="12 6 12 12 16 14" />
-                                </svg>
-                              </span>
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-text-muted uppercase">End Hour</span>
-                            <div className="relative">
-                              <input
-                                type="time"
-                                value={settingsState.workHours.end}
-                                onChange={(e) => setSettingsState({
-                                  ...settingsState,
-                                  workHours: { ...settingsState.workHours, end: e.target.value }
-                                })}
-                                style={{ colorScheme: "dark" }}
-                                className="w-full bg-bg-base border border-border rounded-lg p-2 pr-10 text-xs text-text-primary focus:outline-none focus:border-accent-primary relative z-10"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted z-20 pointer-events-none">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <circle cx="12" cy="12" r="10" />
-                                  <polyline points="12 6 12 12 16 14" />
-                                </svg>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Working Days Checkboxes */}
-                        <div className="space-y-2">
-                          <span className="text-[10px] font-bold text-text-muted uppercase">Working Days</span>
-                          <div className="flex flex-wrap gap-2">
-                            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => {
-                              const isChecked = settingsState.workHours.days.includes(day);
-                              return (
-                                <button
-                                  key={day}
-                                  onClick={() => {
-                                    const nextDays = isChecked 
-                                      ? settingsState.workHours.days.filter((d) => d !== day)
-                                      : [...settingsState.workHours.days, day];
-                                    setSettingsState({
-                                      ...settingsState,
-                                      workHours: { ...settingsState.workHours, days: nextDays }
-                                    });
-                                  }}
-                                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition ${
-                                    isChecked 
-                                      ? "bg-accent-primary/10 border-accent-primary text-accent-primary" 
-                                      : "border-border text-text-muted hover:border-text-primary"
-                                  }`}
-                                >
-                                  {day}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Timezone & Defaults Card */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      <h3 className="text-lg font-bold text-text-primary">System Localization</h3>
-                      <div className="space-y-4">
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-text-muted uppercase">Timezone</span>
-                          <select
-                            value={settingsState.timezone}
-                            onChange={(e) => setSettingsState({ ...settingsState, timezone: e.target.value })}
-                            className="w-full bg-bg-base border border-border rounded-lg p-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary"
-                          >
-                            <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-                            <option value="UTC">Coordinated Universal Time (UTC)</option>
-                            <option value="America/New_York">America/New_York (EST)</option>
-                            <option value="Europe/London">Europe/London (GMT)</option>
-                          </select>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-text-muted uppercase">Meeting Duration</span>
-                            <select
-                              value={settingsState.meetingDuration}
-                              onChange={(e) => setSettingsState({ ...settingsState, meetingDuration: Number(e.target.value) })}
-                              className="w-full bg-bg-base border border-border rounded-lg p-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary"
-                            >
-                              <option value={15}>15 Minutes</option>
-                              <option value={30}>30 Minutes</option>
-                              <option value={60}>1 Hour</option>
-                              <option value={120}>2 Hours</option>
-                            </select>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-text-muted uppercase">Default Priority</span>
-                            <select
-                              value={settingsState.taskPriority}
-                              onChange={(e) => setSettingsState({ ...settingsState, taskPriority: e.target.value as any })}
-                              className="w-full bg-bg-base border border-border rounded-lg p-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary"
-                            >
-                              <option value="high">High</option>
-                              <option value="medium">Medium</option>
-                              <option value="low">Low</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeSettingsTab === "ai" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-                    {/* AI Agent Behaviors */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      <h3 className="text-lg font-bold text-text-primary">Automation Settings</h3>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <span className="text-[10px] font-bold text-text-muted uppercase">Automation Mode</span>
-                          <div className="grid grid-cols-2 gap-3">
-                            {[
-                              { id: "copilot", title: "Co-Pilot", desc: "AI drafts everything and waits for approval." },
-                              { id: "autopilot", title: "Autopilot", desc: "AI schedules calendar and drafts email directly." }
-                            ].map((mode) => {
-                              const isActive = settingsState.automationMode === mode.id;
-                              return (
-                                <div
-                                  key={mode.id}
-                                  onClick={() => setSettingsState({ ...settingsState, automationMode: mode.id as any })}
-                                  className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between h-28 ${
-                                    isActive 
-                                      ? "border-accent-primary bg-accent-primary/5 shadow-[0_0_12px_rgba(59,130,246,0.1)]" 
-                                      : "border-border bg-bg-base hover:border-text-muted"
-                                  }`}
-                                >
-                                  <span className={`text-xs font-bold ${isActive ? "text-accent-primary" : "text-text-primary"}`}>
-                                    {mode.title}
-                                  </span>
-                                  <p className="text-[10px] text-text-muted leading-relaxed">{mode.desc}</p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-text-muted uppercase">AI Response Style</span>
-                          <select
-                            value={settingsState.responseStyle}
-                            onChange={(e) => setSettingsState({ ...settingsState, responseStyle: e.target.value as any })}
-                            className="w-full bg-bg-base border border-border rounded-lg p-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary"
-                          >
-                            <option value="concise">Concise (Short and focused summaries)</option>
-                            <option value="detailed">Detailed (Includes reasoning and breakdown)</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Proactive Agent parameters */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      <h3 className="text-lg font-bold text-text-primary">Proactive Settings</h3>
-                      <p className="text-xs text-text-muted leading-relaxed">
-                        Control how the AI checks your workspace tasks and calendar overlaps in the background.
-                      </p>
-                      <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-bg-base">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-text-primary">Context-Aware Nudges</p>
-                          <p className="text-[10px] text-text-muted leading-normal">Let AI scan Firestore tasks + Calendar to suggest schedule buffers.</p>
-                        </div>
-                        <button
-                          onClick={() => setSettingsState({ ...settingsState, proactiveNudges: !settingsState.proactiveNudges })}
-                          className={`w-10 h-6 flex items-center rounded-full p-1 transition duration-300 ${
-                            settingsState.proactiveNudges ? "bg-accent-primary justify-end" : "bg-border justify-start"
-                          }`}
-                        >
-                          <span className="h-4 w-4 bg-white rounded-full shadow-md" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeSettingsTab === "integrations" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-                    {/* Google OAuth Connection statuses */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      <h3 className="text-lg font-bold text-text-primary">Connected Accounts</h3>
-                      <p className="text-xs text-text-muted leading-relaxed">
-                        Google workspace credentials required for live Calendar & Gmail write processes.
-                      </p>
-
-                      {(() => {
-                        const token = mounted ? sessionStorage.getItem("googleAccessToken") : null;
-                        const isConnected = token && token !== "";
-                        const isSandbox = token === "mock-sandbox-token" || token === "mock-token-refresh" || (token && token.startsWith("mock-"));
-
-                        let statusColor = "text-error bg-error/15 border-error/20";
-                        let statusText = "Not Connected";
-                        if (isConnected) {
-                          if (isSandbox) {
-                            statusColor = "text-warning bg-warning/15 border-warning/20";
-                            statusText = "Simulated Sandbox Mode";
-                          } else {
-                            statusColor = "text-success bg-success/15 border-success/20";
-                            statusText = "Connected ✓";
-                          }
-                        }
-
-                        return (
-                          <div className="space-y-4 mt-2">
-                            <div className="space-y-3">
-                              {/* Google Calendar Row */}
-                              <div className="flex items-center justify-between py-3 border-b border-border/30">
-                                <div className="flex items-center gap-2.5">
-                                  <span className="text-lg">📅</span>
-                                  <div className="space-y-0.5">
-                                    <p className="text-xs font-bold text-text-primary">Google Calendar</p>
-                                    <span className={`text-[9px] px-2 py-0.5 border rounded-full font-bold uppercase ${statusColor}`}>
-                                      {statusText}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  {isConnected ? (
-                                    <button
-                                      onClick={() => {
-                                        sessionStorage.removeItem("googleAccessToken");
-                                        window.location.href = "/login";
-                                      }}
-                                      className="px-3 py-1.5 border border-error/30 hover:bg-error/10 text-error text-xs font-bold rounded-lg transition"
-                                    >
-                                      Disconnect
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={handleReAuthorize}
-                                      className="px-3 py-1.5 bg-accent-primary hover:brightness-110 text-white text-xs font-bold rounded-lg transition shadow"
-                                    >
-                                      Authorize
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Gmail Row */}
-                              <div className="flex items-center justify-between py-3 border-b border-border/30">
-                                <div className="flex items-center gap-2.5">
-                                  <span className="text-lg">📧</span>
-                                  <div className="space-y-0.5">
-                                    <p className="text-xs font-bold text-text-primary">Gmail Actions</p>
-                                    <span className={`text-[9px] px-2 py-0.5 border rounded-full font-bold uppercase ${statusColor}`}>
-                                      {statusText}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  {isConnected ? (
-                                    <button
-                                      onClick={() => {
-                                        sessionStorage.removeItem("googleAccessToken");
-                                        setAuthError("Google OAuth session expired. Please sign in again to sync Calendar & Gmail.");
-                                      }}
-                                      className="px-3 py-1.5 border border-error/30 hover:bg-error/10 text-error text-xs font-bold rounded-lg transition"
-                                    >
-                                      Disconnect
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={handleReAuthorize}
-                                      className="px-3 py-1.5 bg-accent-primary hover:brightness-110 text-white text-xs font-bold rounded-lg transition shadow"
-                                    >
-                                      Authorize
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Permanent Silent Sync Row */}
-                              <div className="flex items-center justify-between py-3 border-b border-border/30">
-                                <div className="flex items-center gap-2.5">
-                                  <span className="text-lg">⚡</span>
-                                  <div className="space-y-0.5">
-                                    <p className="text-xs font-bold text-text-primary">Permanent Silent Sync</p>
-                                    <span className={`text-[9px] px-2 py-0.5 border rounded-full font-bold uppercase ${
-                                      isGoogleConnected 
-                                        ? "text-success bg-success/15 border-success/20" 
-                                        : "text-error bg-error/15 border-error/20"
-                                    }`}>
-                                      {isGoogleConnected ? "Enabled ✓" : "Not Enabled"}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  {isGoogleConnected ? (
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] text-success font-bold px-3 py-1.5 bg-success/5 border border-success/20 rounded-lg">
-                                        Active & Locked
-                                      </span>
-                                      <button
-                                        onClick={handleDisconnectSilentSync}
-                                        className="px-3 py-1.5 border border-error/30 hover:bg-error/10 text-error text-xs font-bold rounded-lg transition cursor-pointer"
-                                      >
-                                        Disconnect
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={handleConnectSilentSync}
-                                      className="px-3 py-1.5 bg-accent-primary hover:brightness-110 text-white text-xs font-bold rounded-lg transition shadow cursor-pointer"
-                                    >
-                                      Enable
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Token Expired warnings */}
-                            {isConnected && !isSandbox && (
-                              <div className="p-3 bg-success/5 border border-success/20 rounded-xl flex items-center justify-between">
-                                <p className="text-[10px] text-text-muted leading-relaxed">
-                                  Active Access Token verified. Token is refreshed dynamically during AI calls.
-                                </p>
-                                <button
-                                  onClick={handleReAuthorize}
-                                  disabled={reAuthLoading}
-                                  className="bg-success text-white font-bold text-[9px] px-2.5 py-1.5 rounded-lg hover:brightness-110 disabled:opacity-60 transition shrink-0"
-                                >
-                                  {reAuthLoading ? "Signing in..." : "Re-Authorize"}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Sync Preference Intervals */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      <h3 className="text-lg font-bold text-text-primary">Sync Preferences</h3>
-                      <div className="space-y-4">
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-text-muted uppercase">Google Calendar Poll Frequency</span>
-                          <select
-                            value={settingsState.syncPreferences.calendar}
-                            onChange={(e) => setSettingsState({
-                              ...settingsState,
-                              syncPreferences: { ...settingsState.syncPreferences, calendar: Number(e.target.value) }
-                            })}
-                            className="w-full bg-bg-base border border-border rounded-lg p-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary"
-                          >
-                            <option value={60000}>Real-time (Every 1 Minute)</option>
-                            <option value={900000}>Co-Pilot (Every 15 Minutes)</option>
-                            <option value={3600000}>Hourly (Every 1 Hour)</option>
-                            <option value={0}>Manual Polling Only</option>
-                          </select>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-text-muted uppercase">Gmail Draft Polling Interval</span>
-                          <select
-                            value={settingsState.syncPreferences.gmail}
-                            onChange={(e) => setSettingsState({
-                              ...settingsState,
-                              syncPreferences: { ...settingsState.syncPreferences, gmail: Number(e.target.value) }
-                            })}
-                            className="w-full bg-bg-base border border-border rounded-lg p-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary"
-                          >
-                            <option value={60000}>Real-time (Every 1 Minute)</option>
-                            <option value={900000}>Co-Pilot (Every 15 Minutes)</option>
-                            <option value={3600000}>Hourly (Every 1 Hour)</option>
-                            <option value={0}>Manual Polling Only</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeSettingsTab === "notifications" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-                    {/* Channels toggling */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      <h3 className="text-lg font-bold text-text-primary">Communication Channels</h3>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between p-3 border border-border bg-bg-base rounded-xl">
-                          <span className="text-xs font-bold text-text-primary">In-app notifications</span>
-                          <button
-                            onClick={() => setSettingsState({
-                              ...settingsState,
-                              notifications: { ...settingsState.notifications, inApp: !settingsState.notifications.inApp }
-                            })}
-                            className={`w-10 h-6 flex items-center rounded-full p-1 transition duration-300 ${
-                              settingsState.notifications.inApp ? "bg-accent-primary justify-end" : "bg-border justify-start"
-                            }`}
-                          >
-                            <span className="h-4 w-4 bg-white rounded-full shadow-md" />
-                          </button>
-                        </div>
-
-                        <div className="flex items-center justify-between p-3 border border-border bg-bg-base rounded-xl">
-                          <span className="text-xs font-bold text-text-primary">Email alerts</span>
-                          <button
-                            onClick={() => setSettingsState({
-                              ...settingsState,
-                              notifications: { ...settingsState.notifications, email: !settingsState.notifications.email }
-                            })}
-                            className={`w-10 h-6 flex items-center rounded-full p-1 transition duration-300 ${
-                              settingsState.notifications.email ? "bg-accent-primary justify-end" : "bg-border justify-start"
-                            }`}
-                          >
-                            <span className="h-4 w-4 bg-white rounded-full shadow-md" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Quiet Hours & Alerts */}
-                    <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-                      <h3 className="text-lg font-bold text-text-primary">Quiet Hours & Reminders</h3>
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-text-muted uppercase">DND Start Time</span>
-                            <div className="relative">
-                              <input
-                                type="time"
-                                value={settingsState.notifications.quietHours.start}
-                                onChange={(e) => setSettingsState({
-                                  ...settingsState,
-                                  notifications: {
-                                    ...settingsState.notifications,
-                                    quietHours: { ...settingsState.notifications.quietHours, start: e.target.value }
-                                  }
-                                })}
-                                style={{ colorScheme: "dark" }}
-                                className="w-full bg-bg-base border border-border rounded-lg p-2 pr-10 text-xs text-text-primary focus:outline-none focus:border-accent-primary relative z-10"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted z-20 pointer-events-none">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <circle cx="12" cy="12" r="10" />
-                                  <polyline points="12 6 12 12 16 14" />
-                                </svg>
-                              </span>
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-text-muted uppercase">DND End Time</span>
-                            <div className="relative">
-                              <input
-                                type="time"
-                                value={settingsState.notifications.quietHours.end}
-                                onChange={(e) => setSettingsState({
-                                  ...settingsState,
-                                  notifications: {
-                                    ...settingsState.notifications,
-                                    quietHours: { ...settingsState.notifications.quietHours, end: e.target.value }
-                                  }
-                                })}
-                                style={{ colorScheme: "dark" }}
-                                className="w-full bg-bg-base border border-border rounded-lg p-2 pr-10 text-xs text-text-primary focus:outline-none focus:border-accent-primary relative z-10"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted z-20 pointer-events-none">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <circle cx="12" cy="12" r="10" />
-                                  <polyline points="12 6 12 12 16 14" />
-                                </svg>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-text-muted uppercase">Reminder Frequency</span>
-                          <select
-                            value={settingsState.notifications.reminderFrequency}
-                            onChange={(e) => setSettingsState({
-                              ...settingsState,
-                              notifications: { ...settingsState.notifications, reminderFrequency: Number(e.target.value) }
-                            })}
-                            className="w-full bg-bg-base border border-border rounded-lg p-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary"
-                          >
-                            <option value={5}>5 Minutes Before</option>
-                            <option value={15}>15 Minutes Before</option>
-                            <option value={60}>1 Hour Before</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeSettingsTab === "logs" && (
-                  <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4 animate-fade-in">
-                    <div className="flex justify-between items-center pb-2 border-b border-border/40">
-                      <h3 className="text-lg font-bold text-text-primary">Agent Process Logs</h3>
-                      <button
-                        onClick={() => {
-                          setActionsMap({ "1": [], "2": [], "3": [], "4": [] });
-                          alert("All simulated activity logs cleared!");
-                        }}
-                        className="bg-error/10 hover:bg-error/15 border border-error/25 text-error px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-                      >
-                        Clear All Logs
-                      </button>
-                    </div>
-
-                    <div className="overflow-x-auto max-h-[350px]">
-                      {(() => {
-                        const allActions = Object.entries(actionsMap).flatMap(([taskId, list]) => {
-                          const task = tasks.find((t) => t.id === taskId);
-                          return list.map((act) => ({
-                            ...act,
-                            taskTitle: task?.title || "System Process"
-                          }));
-                        });
-
-                        if (allActions.length === 0) {
-                          return <p className="text-sm text-text-muted italic py-10 text-center">No system process logs recorded.</p>;
-                        }
-
-                        return (
-                          <table className="w-full font-mono text-[11px] text-left border-collapse text-text-primary">
-                            <thead>
-                              <tr className="border-b border-border/50 text-[10px] uppercase text-text-muted">
-                                <th className="py-2.5 pr-4">Timestamp</th>
-                                <th className="py-2.5 px-4">Action Type</th>
-                                <th className="py-2.5 px-4">Detail</th>
-                                <th className="py-2.5 pl-4">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/30">
-                              {allActions.map((action, i) => (
-                                <tr key={i} className="hover:bg-bg-base/40">
-                                  <td className="py-3 pr-4 text-text-muted">
-                                    {action.executedAt ? new Date(action.executedAt).toLocaleTimeString() : "Pending"}
-                                  </td>
-                                  <td className="py-3 px-4 font-bold text-blue-400">{action.actionType}</td>
-                                  <td className="py-3 px-4 text-text-muted truncate max-w-xs">{action.detail}</td>
-                                  <td className="py-3 pl-4">
-                                    <span className={`px-2 py-0.5 text-[10px] rounded-md font-bold ${
-                                      action.status === "executed" || action.status === "approved" 
-                                        ? "bg-success/15 text-success" 
-                                        : "bg-warning/15 text-warning"
-                                    }`}>
-                                      {action.status}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                )}
-              </div>
+            // TAB CONTENT WRAPPER FOR TRANSITIONS
+            <div key={activeTab} className="animate-fade-in space-y-8 pb-10">
+              {activeTab === "dashboard" ? (
+                <DashboardView
+                  tasks={tasks}
+                  setSelectedTask={setSelectedTask}
+                  setChatOpen={setChatOpen}
+                  setInputText={setInputText}
+                  setMessages={setMessages}
+                  activeConflict={activeConflict}
+                  setActiveConflict={setActiveConflict}
+                  mounted={mounted}
+                />
+              ) : activeTab === "tasks" ? (
+                <TasksView
+                  tasks={tasks}
+                  setSelectedTask={setSelectedTask}
+                  setChatOpen={setChatOpen}
+                  setInputText={setInputText}
+                  setMessages={setMessages}
+                />
+              ) : activeTab === "calendar" ? (
+                <CalendarView
+                  tasks={tasks}
+                  setSelectedTask={setSelectedTask}
+                  calendarDate={calendarDate}
+                  setCalendarDate={setCalendarDate}
+                  selectedCalendarDate={selectedCalendarDate}
+                  setSelectedCalendarDate={setSelectedCalendarDate}
+                />
+              ) : activeTab === "completed" ? (
+                <CompletedView
+                  tasks={tasks}
+                  setSelectedTask={setSelectedTask}
+                />
+              ) : activeTab === "logs" ? (
+                <LogsView
+                  actionsMap={actionsMap}
+                  tasks={tasks}
+                />
+              ) : (
+                <SettingsView
+                  settingsState={settingsState}
+                  setSettingsState={setSettingsState}
+                  handleResetToDefaults={handleResetToDefaults}
+                  isDark={isDark}
+                  isGoogleConnected={isGoogleConnected}
+                  reAuthLoading={reAuthLoading}
+                  handleReAuthorize={handleReAuthorize}
+                  handleConnectSilentSync={handleConnectSilentSync}
+                  handleDisconnectSilentSync={handleDisconnectSilentSync}
+                  showSaveSuccess={showSaveSuccess}
+                  setActionsMap={setActionsMap}
+                  tasks={tasks}
+                />
+              )}
             </div>
           )}
           
         </section>
 
         {/* CHAT PANEL */}
-        <aside 
-          className={`fixed inset-y-0 right-0 z-20 w-full flex flex-col transform md:relative md:translate-x-0 ${
-            isResizing ? "" : "transition-all duration-300"
-          } ${chatOpen ? "translate-x-0" : "translate-x-full"}`}
-          style={{
-            width: mounted && window.innerWidth >= 768 ? `${chatWidth}px` : "100%",
-            maxWidth: mounted && window.innerWidth >= 768 ? "none" : "384px",
-            background: isDark
-              ? "linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(20,30,55,0.95) 100%)"
-              : "linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(241,245,249,0.98) 100%)",
-            backdropFilter: "blur(20px)",
-            borderLeft: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(0,0,0,0.07)",
-            boxShadow: isDark ? "-4px 0 24px rgba(0,0,0,0.3)" : "-4px 0 24px rgba(0,0,0,0.06)"
-          }}
-        >
-          {/* Resizer Handle */}
-          <div
-            onMouseDown={startResizing}
-            className={`hidden md:block absolute top-0 bottom-0 left-0 w-1.5 cursor-col-resize hover:bg-accent-primary/40 transition-colors z-30 ${
-              isResizing ? "bg-accent-primary" : "bg-transparent"
-            }`}
-          />
-          
-          {/* Header */}
-          <div
-            className="p-4 flex justify-between items-center backdrop-blur-md"
-            style={{
-              borderBottom: isDark ? "1px solid rgba(255,255,255,0.06)" : "1px solid var(--border)",
-              background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)"
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-3.5 w-3.5 items-center justify-center">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>ActionMate AI Agent</h3>
-                <p className="text-[10px] text-blue-400 font-medium">Always ready to act</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setChatOpen(false)}
-              className="md:hidden text-lg p-1 transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Conversation history area */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-4">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} animate-fade-in w-full`}>
-                <div className={`${
-                  msg.actions && !msg.executed && !msg.dismissed ? "w-full max-w-full" : "max-w-[85%]"
-                } rounded-2xl p-3.5 text-sm ${
-                  msg.sender === "user"
-                    ? "text-white rounded-tr-none shadow-lg"
-                    : "rounded-tl-none"
-                }`}
-                style={msg.sender === "user" ? {
-                  background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
-                  boxShadow: "0 4px 14px rgba(139,92,246,0.25)"
-                } : {
-                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.04)",
-                  border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)",
-                  color: "var(--text-primary)"
-                }}
-              >
-                <p className="leading-relaxed">{renderMessageText(msg.text)}</p>
-                
-                {/* ActionCard integration inside AI response */}
-                {msg.actions && !msg.executed && !msg.dismissed && (
-                  <div className="mt-4">
-                    <AgentActionCard
-                      pendingActions={msg.actions}
-                      taskId={msg.taskId || ""}
-                      onSuccess={(results) => handleActionSuccess(i, results, msg.taskId)}
-                      onDismiss={() => handleActionDismiss(i)}
-                      isAutopilot={settingsState.automationMode === "autopilot"}
-                    />
-                  </div>
-                )}
-                {msg.actions && msg.executed && (
-                  <div className="mt-4 text-xs text-green-400 font-bold flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-xl p-3">
-                    <span>✓</span> Recommendation Approved & Executed
-                  </div>
-                )}
-                {msg.actions && msg.dismissed && (
-                  <div
-                    className="mt-4 text-xs font-bold flex items-center gap-1.5 rounded-xl p-3"
-                    style={{
-                      color: "var(--text-muted)",
-                      background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.04)",
-                      border: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)"
-                    }}
-                  >
-                    <span>✕</span> Recommendation Dismissed
-                  </div>
-                )}
-              </div>
-              </div>
-            ))}
-
-            {/* Narrated Status Loading Indicator */}
-            {loadingText && (
-              <div className="flex justify-start animate-pulse">
-                <div
-                  className="rounded-2xl rounded-tl-none p-3.5 text-xs text-blue-400 flex items-center gap-2.5 shadow-inner"
-                  style={{
-                    background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.03)",
-                    border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)"
-                  }}
-                >
-                  <span className="flex h-2.5 w-2.5 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
-                  </span>
-                  <span className="font-semibold">{loadingText}</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Quick suggestions area */}
-          <div
-            className="px-4 py-2 flex flex-wrap gap-1.5"
-            style={{
-              background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.02)",
-              borderTop: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)"
-            }}
-          >
-            {[
-              { label: "📅 Sync Calendar", prompt: "Sync my calendar events for tomorrow" },
-              { label: "📨 Extension Email", prompt: "Draft an extension request email to Prof. Sharma" },
-              { label: "🔍 Check Conflicts", prompt: "Check for any scheduling conflicts today" }
-            ].map((chip, idx) => (
-              <button
-                key={idx}
-                onClick={() => setInputText(chip.prompt)}
-                className="text-[10px] font-semibold px-2.5 py-1 rounded-full transition-all cursor-pointer"
-                style={{
-                  border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)",
-                  background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.03)",
-                  color: "var(--text-muted)"
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLButtonElement).style.background = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.07)";
-                  (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLButtonElement).style.background = isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.03)";
-                  (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
-                }}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Chat panel bottom input bar */}
-          <div
-            className="p-3 backdrop-blur-md"
-            style={{
-              borderTop: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)",
-              background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)"
-            }}
-          >
-            <div
-              className="flex gap-2 items-center rounded-2xl px-3 py-2 transition-all"
-              style={{
-                background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.04)",
-                border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)"
-              }}
-            >
-              <textarea
-                ref={textareaRef}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                placeholder={isListening ? "Listening... speak now" : "Ask ActionMate..."}
-                rows={1}
-                className="flex-1 bg-transparent border-none text-sm focus:outline-none resize-none max-h-20 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                style={{ color: "var(--text-primary)", caretColor: "var(--accent-primary)" }}
-              />
-
-              {/* Mic Button Wrapper */}
-              <div className="relative flex items-center justify-center flex-shrink-0">
-                {/* Circular pulsing ripples (when active) */}
-                {isListening && (
-                  <>
-                    <span className="absolute h-8 w-8 rounded-full border border-red-500/30 animate-ripple-1" />
-                    <span className="absolute h-8 w-8 rounded-full border border-red-500/20 animate-ripple-2" />
-                    <span className="absolute h-8 w-8 rounded-full border border-red-500/10 animate-ripple-3" />
-                  </>
-                )}
-
-                <button
-                  onClick={handleVoiceInput}
-                  className={`relative h-8 w-8 rounded-full flex items-center justify-center transition-all duration-300 border backdrop-blur-md cursor-pointer ${
-                    isListening
-                      ? "bg-red-500/10 border-red-500/30 text-red-500 shadow-[0_0_12px_rgba(239,68,68,0.2)]"
-                      : "bg-white/[0.02] border-white/5 text-text-muted hover:bg-accent-primary/10 hover:border-accent-primary/20 hover:text-accent-primary hover:scale-105"
-                  }`}
-                  title={isListening ? "Stop listening" : "Speak command"}
-                >
-                  {isListening ? (
-                    /* Soundwave Visualizer Bars */
-                    <span className="flex items-end gap-[2px] h-[12px]">
-                      <span className="wave-bar" style={{ animationDelay: "0.1s" }} />
-                      <span className="wave-bar" style={{ animationDelay: "0.3s" }} />
-                      <span className="wave-bar" style={{ animationDelay: "0.5s" }} />
-                      <span className="wave-bar" style={{ animationDelay: "0.2s" }} />
-                      <span className="wave-bar" style={{ animationDelay: "0.4s" }} />
-                    </span>
-                  ) : (
-                    /* Sleek Mic Icon */
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-
-              <button 
-                onClick={handleSendMessage}
-                disabled={!inputText.trim()}
-                className={`p-2 rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer ${
-                  inputText.trim() 
-                    ? "bg-gradient-to-tr from-blue-600 to-violet-600 text-white shadow-md hover:brightness-110" 
-                    : "opacity-40 cursor-not-allowed"
-                }`}
-                style={!inputText.trim() ? { color: "var(--text-muted)" } : {}}
-              >
-                <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* FLOATING ACTION CHAT FAB FOR MOBILE */}
-        <button
-          onClick={() => setChatOpen(!chatOpen)}
-          className={`md:hidden fixed bottom-20 right-4 z-10 p-4 rounded-full bg-gradient-to-tr from-accent-primary to-accent-ai text-white shadow-xl flex items-center justify-center transition-all ${
-            chatOpen ? "scale-0" : "scale-100"
-          }`}
-        >
-          <span className="text-xl">💬</span>
-        </button>
+        <ChatPanel 
+          chatOpen={chatOpen}
+          setChatOpen={setChatOpen}
+          messages={messages}
+          inputText={inputText}
+          setInputText={setInputText}
+          isListening={isListening}
+          handleVoiceInput={handleVoiceInput}
+          handleSendMessage={handleSendMessage}
+          handleClearChat={handleClearChat}
+          loadingText={loadingText}
+          chatWidth={chatWidth}
+          isResizing={isResizing}
+          startResizing={startResizing}
+          isDesktop={isDesktop}
+          isDark={isDark}
+          settingsState={settingsState}
+          handleActionSuccess={handleActionSuccess}
+          handleActionDismiss={handleActionDismiss}
+          messagesEndRef={messagesEndRef}
+          textareaRef={textareaRef}
+          renderMessageText={renderMessageText}
+        />
+        
       </main>
 
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      <MobileNav 
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        setSelectedTask={setSelectedTask}
+        isDark={isDark}
+      />
+      
     </div>
   );
 }

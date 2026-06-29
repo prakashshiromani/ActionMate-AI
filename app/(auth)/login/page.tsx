@@ -10,6 +10,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const createServerSession = async (user: any, accessToken?: string) => {
+    const idToken = await user.getIdToken();
+    await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+    if (accessToken) sessionStorage.setItem("googleAccessToken", accessToken);
+  };
+
   // Capture the sign-in redirect result when page loads/mounts after returning from Google
   useEffect(() => {
     sessionStorage.clear();
@@ -17,14 +27,11 @@ export default function LoginPage() {
 
     setLoading(true);
     getRedirectResult(auth)
-      .then((result) => {
+      .then(async (result) => {
         if (result) {
           const credential = GoogleAuthProvider.credentialFromResult(result);
           const accessToken = credential?.accessToken;
-          
-          if (accessToken) {
-            sessionStorage.setItem("googleAccessToken", accessToken);
-          }
+          await createServerSession(result.user, accessToken ?? undefined);
           router.push("/dashboard");
         }
       })
@@ -46,11 +53,9 @@ export default function LoginPage() {
     provider.setCustomParameters({ prompt: "select_account" });
 
     try {
-      // If Firebase Auth is not configured, bypass login and enter Simulated Sandbox Mode
       if (!auth || !auth.app) {
-        console.warn("Firebase Auth not configured. Entering Simulated Sandbox Mode.");
-        sessionStorage.setItem("googleAccessToken", "mock-sandbox-token");
-        router.push("/dashboard");
+        setError("Authentication service unavailable. Please try again later.");
+        setLoading(false);
         return;
       }
 
@@ -69,10 +74,7 @@ export default function LoginPage() {
         const result = await signInWithPopup(auth, provider);
         const credential = GoogleAuthProvider.credentialFromResult(result);
         const accessToken = credential?.accessToken;
-        
-        if (accessToken) {
-          sessionStorage.setItem("googleAccessToken", accessToken);
-        }
+        await createServerSession(result.user, accessToken ?? undefined);
         router.push("/dashboard");
       } catch (popupError: any) {
         if (popupError.code === "auth/popup-blocked" || popupError.code === "auth/cancelled-popup-request") {
@@ -97,6 +99,7 @@ export default function LoginPage() {
   const handleSandboxBypass = () => {
     console.warn("Bypassing Firebase Auth. Entering Simulated Sandbox Mode.");
     sessionStorage.setItem("googleAccessToken", "mock-sandbox-token");
+    document.cookie = "actionmate_auth=1; path=/; max-age=86400; SameSite=Lax";
     router.push("/dashboard");
   };
 
@@ -125,17 +128,19 @@ export default function LoginPage() {
               <div className="rounded-lg bg-error/10 border border-error/30 p-4 text-sm text-error text-center">
                 {error}
               </div>
-              <button
-                onClick={() => {
-                  console.warn("Bypassing login via manual user fallback to Simulated Sandbox Mode.");
-                  sessionStorage.setItem("googleAccessToken", "mock-sandbox-token");
-                  router.push("/dashboard");
-                }}
-                type="button"
-                className="w-full bg-bg-raised hover:bg-bg-surface border border-border text-text-primary text-xs font-semibold py-2.5 rounded-lg transition-all text-center cursor-pointer"
-              >
-                Proceed in Simulated Sandbox Mode 🧪
-              </button>
+              {process.env.NODE_ENV !== "production" && (
+                <button
+                  onClick={() => {
+                    sessionStorage.setItem("googleAccessToken", "mock-sandbox-token");
+                    document.cookie = "actionmate_auth=1; path=/; max-age=86400; SameSite=Lax";
+                    router.push("/dashboard");
+                  }}
+                  type="button"
+                  className="w-full bg-bg-raised hover:bg-bg-surface border border-border text-text-primary text-xs font-semibold py-2.5 rounded-lg transition-all text-center cursor-pointer"
+                >
+                  Proceed in Simulated Sandbox Mode 🧪
+                </button>
+              )}
             </div>
           )}
 
@@ -182,13 +187,15 @@ export default function LoginPage() {
               )}
             </button>
 
-            <button
-              onClick={handleSandboxBypass}
-              type="button"
-              className="w-full flex justify-center items-center gap-2 rounded-lg border border-border bg-bg-surface hover:bg-bg-raised py-2.5 px-4 text-sm font-semibold text-text-primary transition-all duration-200 cursor-pointer"
-            >
-              ✨ Bypass & Enter Sandbox Mode
-            </button>
+            {process.env.NODE_ENV !== "production" && (
+              <button
+                onClick={handleSandboxBypass}
+                type="button"
+                className="w-full flex justify-center items-center gap-2 rounded-lg border border-border bg-bg-surface hover:bg-bg-raised py-2.5 px-4 text-sm font-semibold text-text-primary transition-all duration-200 cursor-pointer"
+              >
+                ✨ Bypass & Enter Sandbox Mode
+              </button>
+            )}
           </div>
         </div>
 

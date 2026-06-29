@@ -20,15 +20,18 @@ export async function POST(req: NextRequest) {
     const googleAccessToken = req.headers.get("x-google-access-token") || "";
     const authHeader = req.headers.get("Authorization") || "";
 
-    let userId = "guest-user";
-    if (authHeader.startsWith("Bearer ")) {
-      const idToken = authHeader.substring(7);
-      try {
-        const decodedToken = await adminAuth.verifyIdToken(idToken);
-        userId = decodedToken.uid;
-      } catch (authError) {
-        console.warn("Firebase ID Token verification bypassed/failed in execute route:", authError);
-      }
+    if (!authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Authorization required" }, { status: 401 });
+    }
+
+    const idToken = authHeader.substring(7);
+    let userId: string;
+    try {
+      const decodedToken = await adminAuth.verifyIdToken(idToken);
+      userId = decodedToken.uid;
+    } catch (authError) {
+      console.warn("Firebase ID Token verification failed in execute route:", authError);
+      return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
     }
 
     let activeGoogleAccessToken = googleAccessToken;
@@ -116,6 +119,27 @@ export async function POST(req: NextRequest) {
           const to = payload.to || "recipient@example.com";
           const subject = payload.subject || "ActionMate AI Update";
           const bodyText = payload.body || "";
+
+          // Prompt injection guard: block suspicious subjects/bodies
+          const INJECTION_PATTERNS = [
+            /ignore (all |previous )?instructions/i,
+            /system\s*prompt/i,
+            /override.*instructions/i,
+            /you are now/i,
+          ];
+          const combined = `${subject} ${bodyText}`;
+          if (INJECTION_PATTERNS.some((p) => p.test(combined))) {
+            results.push({ type, status: "failed", detail: "Draft blocked: suspicious content detected." });
+            continue;
+          }
+
+          // Block clearly external/untrusted placeholder recipients
+          const recipientDomain = to.split("@")[1]?.toLowerCase() ?? "";
+          const BLOCKED_PLACEHOLDER_DOMAINS = ["evil.com", "attacker.com", "example.com", "test.com", "hack.com"];
+          if (BLOCKED_PLACEHOLDER_DOMAINS.includes(recipientDomain)) {
+            results.push({ type, status: "failed", detail: `Draft blocked: recipient domain '${recipientDomain}' not allowed.` });
+            continue;
+          }
 
           const draft = await draftGmailEmail(activeGoogleAccessToken, to, subject, bodyText);
           gmailDraftId = draft.id || null;

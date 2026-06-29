@@ -16,18 +16,18 @@ export async function POST(req: NextRequest) {
     const googleAccessToken = req.headers.get("x-google-access-token") || "";
     const authHeader = req.headers.get("Authorization") || "";
 
-    // Default userId for unauthenticated testing
-    let userId = "guest-user";
+    if (!authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Authorization required" }, { status: 401 });
+    }
 
-    // Attempt Firebase Token Verification
-    if (authHeader.startsWith("Bearer ")) {
-      const idToken = authHeader.substring(7);
-      try {
-        const decodedToken = await adminAuth.verifyIdToken(idToken);
-        userId = decodedToken.uid;
-      } catch (authError) {
-        console.warn("Firebase ID Token verification bypassed/failed:", authError);
-      }
+    const idToken = authHeader.substring(7);
+    let userId: string;
+    try {
+      const decodedToken = await adminAuth.verifyIdToken(idToken);
+      userId = decodedToken.uid;
+    } catch (authError) {
+      console.warn("Firebase ID Token verification failed:", authError);
+      return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
     }
 
     let activeGoogleAccessToken = googleAccessToken;

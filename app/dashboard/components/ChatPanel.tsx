@@ -291,7 +291,7 @@ export default function ChatPanel({
 
       {/* Quick suggestions area - horizontal scroll flex box */}
       <div
-        className="px-4 py-2 flex flex-nowrap overflow-x-auto gap-2.5 scrollbar-none pb-2.5 shrink-0"
+        className="px-4 py-2 flex flex-nowrap overflow-x-auto gap-2.5 scrollbar-thin pb-3 shrink-0"
         style={{
           background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.02)",
           borderTop: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)",

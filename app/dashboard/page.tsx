@@ -1084,6 +1084,7 @@ export default function Dashboard() {
             }
           ];
 
+          playAiMessage();
           setMessages((prev) => [
             ...prev,
             {

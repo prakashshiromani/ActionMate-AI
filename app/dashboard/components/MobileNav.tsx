@@ -25,6 +25,12 @@ export default function MobileNav({
         boxShadow: isDark ? "0 -8px 32px rgba(0,0,0,0.4)" : "0 -8px 32px rgba(0,0,0,0.08)",
       }}
     >
+      {/* Active route title strip */}
+      <div className="flex items-center justify-center h-6 border-b border-white/5">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted/70">
+          {activeTab === "dashboard" ? "Dashboard" : activeTab === "tasks" ? "Tasks" : activeTab === "calendar" ? "Calendar" : activeTab === "completed" ? "Completed" : activeTab === "logs" ? "Logs" : "Settings"}
+        </span>
+      </div>
       <div className="flex justify-around items-center h-16 px-2">
         {[
           {

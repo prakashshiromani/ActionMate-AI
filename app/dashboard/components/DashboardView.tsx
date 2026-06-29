@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import ConflictBanner from "@/components/ConflictBanner";
+import { playConflictAlert } from "@/lib/sounds";
 
 interface MockTask {
   id: string;
@@ -40,6 +41,22 @@ export default function DashboardView({
   setActiveConflict,
   mounted,
 }: DashboardViewProps) {
+  // Play conflict alert once when the static DBMS+Presentation conflict is first visible
+  const conflictSoundFired = useRef(false);
+  const staticConflictVisible =
+    !activeConflict &&
+    tasks.some((t) => t.title.toLowerCase().includes("dbms") && t.status !== "completed") &&
+    tasks.some((t) =>
+      (t.title.toLowerCase().includes("presentation") || t.title.toLowerCase().includes("client")) &&
+      t.status !== "completed"
+    );
+  useEffect(() => {
+    if (staticConflictVisible && !conflictSoundFired.current) {
+      conflictSoundFired.current = true;
+      playConflictAlert();
+    }
+  }, [staticConflictVisible]);
+
   // Build Mon–Sun columns for the current week
   const now = mounted ? new Date() : new Date(0);
   const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat

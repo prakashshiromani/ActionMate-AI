@@ -11,6 +11,8 @@ import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { collection, query, where, getDocs, doc, updateDoc, setDoc, getDoc, deleteDoc, onSnapshot, deleteField, serverTimestamp } from "firebase/firestore";
 
+import { playConflictAlert, playAiMessage, playSuccess, playDismiss, playTaskComplete } from "@/lib/sounds";
+
 // Import modular sub-components
 import Sidebar from "./components/Sidebar";
 import MobileNav from "./components/MobileNav";
@@ -145,6 +147,9 @@ export default function Dashboard() {
   const [isDark, setIsDark] = useState(true); // default dark
   // SSR-safe desktop detector — avoids window.innerWidth in JSX
   const [isDesktop, setIsDesktop] = useState(false);
+  
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [paletteSearch, setPaletteSearch] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -159,6 +164,18 @@ export default function Dashboard() {
     checkDesktop();
     window.addEventListener("resize", checkDesktop);
 
+    // Command palette keydown listener
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+      if (e.key === "Escape") {
+        setCommandPaletteOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("googleConnected") === "true") {
@@ -167,7 +184,10 @@ export default function Dashboard() {
       }
     }
 
-    return () => window.removeEventListener("resize", checkDesktop);
+    return () => {
+      window.removeEventListener("resize", checkDesktop);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   const toggleTheme = () => {
@@ -242,7 +262,11 @@ export default function Dashboard() {
   useEffect(() => {
     if (!isLoaded) return;
     const token = sessionStorage.getItem("googleAccessToken");
-    if (!token && !isGoogleConnected) {
+    const isSandbox = token === "mock-sandbox-token" || (token && token.startsWith("mock-"));
+    
+    if (isSandbox) {
+      setAuthError(null);
+    } else if (!token && !isGoogleConnected) {
       setAuthError("Google OAuth session expired. Please sign in again to sync Calendar & Gmail.");
     } else if (token || isGoogleConnected) {
       setAuthError(null);
@@ -328,6 +352,14 @@ export default function Dashboard() {
     details: string;
     actionPrompt: string;
   } | null>(null);
+
+  const prevConflictRef = useRef<any>(null);
+  useEffect(() => {
+    if (activeConflict && !prevConflictRef.current) {
+      playConflictAlert();
+    }
+    prevConflictRef.current = activeConflict;
+  }, [activeConflict]);
 
   const [tasks, setTasks] = useState<MockTask[]>([
     {
@@ -1465,6 +1497,20 @@ export default function Dashboard() {
         
         {/* CENTER CONTENT VIEW */}
         <section className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-8">
+          {/* Mobile-only page header */}
+          <div className="md:hidden flex items-center justify-between pb-3 border-b border-border/20">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-extrabold capitalize text-text-primary">
+                {activeTab === "completed" ? "Completed Tasks" : activeTab === "logs" ? "Agent Logs" : activeTab}
+              </span>
+            </div>
+            <button 
+              onClick={() => setChatOpen(!chatOpen)}
+              className="px-2.5 py-1.5 bg-bg-surface hover:bg-bg-raised border border-border text-[10px] font-bold rounded-lg flex items-center gap-1 transition text-text-primary"
+            >
+              💬 {chatOpen ? "Hide Chat" : "Show Chat"}
+            </button>
+          </div>
           
           {loading ? (
             <SkeletonLoader variant="task" count={4} />
@@ -1605,6 +1651,18 @@ export default function Dashboard() {
         
       </main>
 
+      {/* Reopen collapsed Chat Panel FAB (Desktop only) */}
+      {!chatOpen && (
+        <button
+          onClick={() => setChatOpen(true)}
+          className="hidden md:flex fixed bottom-6 right-6 z-40 bg-gradient-to-tr from-accent-primary to-accent-ai hover:brightness-110 active:scale-95 text-white h-12 w-12 rounded-full items-center justify-center shadow-[0_4px_24px_rgba(59,130,246,0.5)] transition duration-200 cursor-pointer animate-scale-up font-bold text-lg"
+          title="Open AI Assistant"
+          aria-label="Open AI Assistant"
+        >
+          💬
+        </button>
+      )}
+
       {/* MOBILE BOTTOM NAVIGATION BAR */}
       <MobileNav 
         activeTab={activeTab}
@@ -1612,6 +1670,59 @@ export default function Dashboard() {
         setSelectedTask={setSelectedTask}
         isDark={isDark}
       />
+
+      {/* Command Palette Modal */}
+      {commandPaletteOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-bg-surface border border-border/80 rounded-2xl shadow-2xl overflow-hidden animate-scale-up">
+            <div className="p-4 border-b border-border/50 flex items-center gap-3 bg-bg-surface">
+              <span className="text-base">⌨️</span>
+              <input
+                type="text"
+                placeholder="Type a command or search tabs... (e.g. settings, theme)"
+                value={paletteSearch}
+                onChange={(e) => setPaletteSearch(e.target.value)}
+                autoFocus
+                className="flex-1 bg-transparent text-xs border-none focus:outline-none text-text-primary placeholder:text-text-muted"
+              />
+              <button
+                onClick={() => setCommandPaletteOpen(false)}
+                className="text-[10px] text-text-muted hover:text-text-primary border border-border/40 px-2 py-0.5 rounded font-mono"
+              >
+                ESC
+              </button>
+            </div>
+            
+            <div className="p-2 max-h-72 overflow-y-auto space-y-1 font-sans text-xs bg-bg-surface">
+              {[
+                { id: "dashboard", label: "Go to Dashboard", shortcut: "⌘D", action: () => { setActiveTab("dashboard"); setSelectedTask(null); } },
+                { id: "tasks", label: "Go to Tasks List", shortcut: "⌘T", action: () => { setActiveTab("tasks"); setSelectedTask(null); } },
+                { id: "calendar", label: "Go to Calendar Monthly View", shortcut: "⌘C", action: () => { setActiveTab("calendar"); setSelectedTask(null); } },
+                { id: "completed", label: "Go to Completed Tasks list", shortcut: "⌘F", action: () => { setActiveTab("completed"); setSelectedTask(null); } },
+                { id: "logs", label: "Go to Agent Activity Logs", shortcut: "⌘L", action: () => { setActiveTab("logs"); setSelectedTask(null); } },
+                { id: "settings", label: "Go to Integrations & Settings", shortcut: "⌘S", action: () => { setActiveTab("settings"); setSelectedTask(null); } },
+                { id: "theme", label: "Toggle Dark/Light Mode Theme", shortcut: "⌘U", action: () => toggleTheme() },
+                { id: "new_task", label: "Create a New Custom Task with AI assistant", shortcut: "⌘N", action: () => { setChatOpen(true); setInputText(""); } }
+              ]
+                .filter((item) => item.label.toLowerCase().includes(paletteSearch.toLowerCase()))
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      item.action();
+                      setCommandPaletteOpen(false);
+                      setPaletteSearch("");
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-accent-primary/10 hover:text-accent-primary flex items-center justify-between text-text-muted transition duration-150 font-medium"
+                  >
+                    <span>{item.label}</span>
+                    <span className="text-[10px] text-text-muted/50 bg-bg-base/60 border border-border/40 px-1.5 py-0.5 rounded font-mono">{item.shortcut}</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
       
     </div>
   );

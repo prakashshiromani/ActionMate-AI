@@ -68,6 +68,15 @@ export default function CalendarView({
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Helper to format status
+  const formatStatus = (status: string) => {
+    if (!status) return "";
+    return status
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
   // Helper to parse deadline
   const parseDeadline = (text: string): Date | null => {
     if (!text) return null;
@@ -232,7 +241,11 @@ export default function CalendarView({
           {selectedCalendarDate ? (
             <div className="space-y-3 flex-1 overflow-y-auto max-h-[350px]">
               {selectedDayTasks.length === 0 ? (
-                <p className="text-xs text-text-muted italic py-4 text-center">No tasks scheduled for this day.</p>
+                <div className="text-center py-10 space-y-2 select-none">
+                  <span className="text-3xl block">🎉</span>
+                  <p className="text-xs font-bold text-text-primary">No tasks scheduled</p>
+                  <p className="text-[10px] text-text-muted">You have a clear calendar for this date! Enjoy your day.</p>
+                </div>
               ) : (
                 selectedDayTasks.map((t) => (
                   <div
@@ -242,19 +255,24 @@ export default function CalendarView({
                   >
                     <div className="space-y-1">
                       <h4 className="font-bold text-xs line-clamp-2 text-text-primary leading-snug">{t.title}</h4>
-                      <span
-                        className={`text-[11px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
-                          t.priority === "high"
-                            ? "bg-error/10 text-error"
-                            : t.priority === "medium"
-                            ? "bg-warning/10 text-warning"
-                            : "bg-text-muted/10 text-text-muted"
-                        }`}
-                      >
-                        {t.priority}
-                      </span>
+                      <div className="flex gap-1 pt-1">
+                        <span
+                          className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
+                            t.priority === "high"
+                              ? "bg-error/10 text-error"
+                              : t.priority === "medium"
+                              ? "bg-warning/10 text-warning"
+                              : "bg-text-muted/10 text-text-muted"
+                          }`}
+                        >
+                          {t.priority}
+                        </span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider bg-accent-ai/10 text-accent-ai">
+                          {formatStatus(t.status)}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center text-[9px] text-text-muted">
+                    <div className="flex justify-between items-center text-[9px] text-text-muted pt-1 border-t border-border/10">
                       <span>
                         Progress: {t.completedSubtasksCount}/{t.subtasksCount}
                       </span>
@@ -265,9 +283,10 @@ export default function CalendarView({
               )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-10 text-center text-text-muted">
+            <div className="flex flex-col items-center justify-center py-10 text-center text-text-muted select-none">
               <span className="text-2xl mb-2">📅</span>
-              <p className="text-xs">Click on any date in the calendar grid to see scheduled tasks and details.</p>
+              <p className="text-[11px] font-bold text-text-primary">No Date Selected</p>
+              <p className="text-[10px] text-text-muted mt-1">Click on any date in the calendar grid to see scheduled tasks and details.</p>
             </div>
           )}
         </div>

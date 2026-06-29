@@ -56,6 +56,24 @@ export default function DashboardView({
 
   const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+  // Helper to format status
+  const formatStatus = (status: string) => {
+    if (!status) return "";
+    return status
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
+  // Helper for dynamic greeting
+  const getGreeting = () => {
+    if (!mounted) return "Hello, Aryan!";
+    const hr = new Date().getHours();
+    if (hr < 12) return "Good morning, Aryan!";
+    if (hr < 17) return "Good afternoon, Aryan!";
+    return "Good evening, Aryan!";
+  };
+
   // Parse deadlineText into a Date (best-effort)
   const parseDeadline = (text: string): Date | null => {
     if (!text) return null;
@@ -105,12 +123,16 @@ export default function DashboardView({
     return weekDays.findIndex((d) => d.getTime() === t.getTime());
   })();
 
+  const highTasks = tasks.filter((t) => t.priority === "high" && t.status !== "completed");
+  const mediumTasks = tasks.filter((t) => t.priority === "medium" && t.status !== "completed");
+  const lowTasks = tasks.filter((t) => t.priority === "low" && t.status !== "completed");
+
   return (
     <>
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Today&apos;s Focus</h1>
-          <p className="text-text-muted text-sm mt-1">Ready to manage and complete your commitments.</p>
+          <h1 className="text-2xl font-extrabold tracking-tight">{getGreeting()}</h1>
+          <p className="text-text-muted text-sm mt-1">Here&apos;s your focus for today. Ready to resolve your commitments.</p>
         </div>
         <button
           onClick={() => {
@@ -168,19 +190,18 @@ export default function DashboardView({
             <span className="h-2 w-2 rounded-full bg-error animate-pulse" /> High Priority
           </div>
           <div className="space-y-3">
-            {tasks
-              .filter((t) => t.priority === "high" && t.status !== "completed")
-              .map((task) => (
+            {highTasks.length > 0 ? (
+              highTasks.map((task) => (
                 <div
                   key={task.id}
                   onClick={() => setSelectedTask(task)}
-                  className="p-3 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between h-32 cursor-pointer"
+                  className="p-3.5 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between min-h-[8.5rem] h-auto pb-4 cursor-pointer"
                 >
                   <div>
                     <div className="flex justify-between items-start gap-2">
-                      <h4 className="font-bold text-base line-clamp-1">{task.title}</h4>
+                      <h4 className="font-bold text-sm text-text-primary leading-snug">{task.title}</h4>
                       <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${
                           task.status === "scheduled"
                             ? "bg-success/10 text-success"
                             : task.status === "completed"
@@ -188,19 +209,19 @@ export default function DashboardView({
                             : "bg-accent-ai/10 text-accent-ai"
                         }`}
                       >
-                        {task.status}
+                        {formatStatus(task.status)}
                       </span>
                     </div>
-                    <p className="text-xs text-text-muted mt-1">{task.deadlineText}</p>
+                    <p className="text-[11px] text-text-muted mt-1.5">📅 Due: {task.deadlineText}</p>
                   </div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-[11px] font-bold text-text-muted">
+                  <div className="space-y-1.5 mt-3">
+                    <div className="flex justify-between text-[10px] font-bold text-text-muted">
                       <span>Progress</span>
                       <span>
                         {task.completedSubtasksCount}/{task.subtasksCount} subtasks
                       </span>
                     </div>
-                    <div className="h-1.5 w-full bg-bg-raised rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full bg-bg-raised border border-border/10 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-accent-primary"
                         style={{ width: `${(task.completedSubtasksCount / task.subtasksCount) * 100}%` }}
@@ -208,7 +229,12 @@ export default function DashboardView({
                     </div>
                   </div>
                 </div>
-              ))}
+              ))
+            ) : (
+              <div className="p-4 border border-dashed border-border/60 bg-bg-surface/30 rounded-xl text-center py-8">
+                <p className="text-xs text-text-muted">No high priority tasks — you&apos;re on track! 🎯</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -218,35 +244,34 @@ export default function DashboardView({
             <span className="h-2 w-2 rounded-full bg-warning" /> Medium Priority
           </div>
           <div className="space-y-3">
-            {tasks
-              .filter((t) => t.priority === "medium" && t.status !== "completed")
-              .map((task) => (
+            {mediumTasks.length > 0 ? (
+              mediumTasks.map((task) => (
                 <div
                   key={task.id}
                   onClick={() => setSelectedTask(task)}
-                  className="p-3 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between h-32 cursor-pointer"
+                  className="p-3.5 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between min-h-[8.5rem] h-auto pb-4 cursor-pointer"
                 >
                   <div>
                     <div className="flex justify-between items-start gap-2">
-                      <h4 className="font-bold text-base line-clamp-1">{task.title}</h4>
+                      <h4 className="font-bold text-sm text-text-primary leading-snug">{task.title}</h4>
                       <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${
                           task.status === "completed" ? "bg-success/15 text-success border border-success/30" : "bg-warning/10 text-warning"
                         }`}
                       >
-                        {task.status}
+                        {formatStatus(task.status)}
                       </span>
                     </div>
-                    <p className="text-xs text-text-muted mt-1">{task.deadlineText}</p>
+                    <p className="text-[11px] text-text-muted mt-1.5">📅 Due: {task.deadlineText}</p>
                   </div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-[11px] font-bold text-text-muted">
+                  <div className="space-y-1.5 mt-3">
+                    <div className="flex justify-between text-[10px] font-bold text-text-muted">
                       <span>Progress</span>
                       <span>
                         {task.completedSubtasksCount}/{task.subtasksCount} subtasks
                       </span>
                     </div>
-                    <div className="h-1.5 w-full bg-bg-raised rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full bg-bg-raised border border-border/10 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-success"
                         style={{ width: `${(task.completedSubtasksCount / task.subtasksCount) * 100}%` }}
@@ -254,7 +279,12 @@ export default function DashboardView({
                     </div>
                   </div>
                 </div>
-              ))}
+              ))
+            ) : (
+              <div className="p-4 border border-dashed border-border/60 bg-bg-surface/30 rounded-xl text-center py-8">
+                <p className="text-xs text-text-muted">No medium tasks — you&apos;re on track! 🎯</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -264,31 +294,30 @@ export default function DashboardView({
             <span className="h-2 w-2 rounded-full bg-text-muted" /> Low Priority
           </div>
           <div className="space-y-3">
-            {tasks
-              .filter((t) => t.priority === "low" && t.status !== "completed")
-              .map((task) => (
+            {lowTasks.length > 0 ? (
+              lowTasks.map((task) => (
                 <div
                   key={task.id}
                   onClick={() => setSelectedTask(task)}
-                  className="p-3 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between h-32 cursor-pointer"
+                  className="p-3.5 rounded-xl border border-border bg-bg-surface hover:border-accent-primary/20 hover:bg-bg-raised transition-all duration-150 shadow-sm flex flex-col justify-between min-h-[8.5rem] h-auto pb-4 cursor-pointer"
                 >
                   <div>
                     <div className="flex justify-between items-start gap-2">
-                      <h4 className="font-bold text-base line-clamp-1">{task.title}</h4>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full font-bold uppercase bg-warning/10 text-warning">
-                        {task.status}
+                      <h4 className="font-bold text-sm text-text-primary leading-snug">{task.title}</h4>
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-warning/10 text-warning shrink-0">
+                        {formatStatus(task.status)}
                       </span>
                     </div>
-                    <p className="text-xs text-text-muted mt-1">{task.deadlineText}</p>
+                    <p className="text-[11px] text-text-muted mt-1.5">📅 Due: {task.deadlineText}</p>
                   </div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-[11px] font-bold text-text-muted">
+                  <div className="space-y-1.5 mt-3">
+                    <div className="flex justify-between text-[10px] font-bold text-text-muted">
                       <span>Progress</span>
                       <span>
                         {task.completedSubtasksCount}/{task.subtasksCount} subtasks
                       </span>
                     </div>
-                    <div className="h-1.5 w-full bg-bg-raised rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full bg-bg-raised border border-border/10 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-warning"
                         style={{ width: `${(task.completedSubtasksCount / task.subtasksCount) * 100}%` }}
@@ -296,7 +325,12 @@ export default function DashboardView({
                     </div>
                   </div>
                 </div>
-              ))}
+              ))
+            ) : (
+              <div className="p-4 border border-dashed border-border/60 bg-bg-surface/30 rounded-xl text-center py-8">
+                <p className="text-xs text-text-muted">No low priority tasks — you&apos;re on track! 🎯</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -314,10 +348,12 @@ export default function DashboardView({
             const count = counts[i];
             const load = getLoad(count);
             const isToday = i === todayIdx;
+            const fullDateStr = wd.toLocaleDateString("en-US", { weekday: 'long', month: 'short', day: 'numeric' });
             return (
               <div
                 key={i}
-                className="flex flex-col items-center py-3 rounded-xl hover:bg-bg-raised transition-colors duration-250 cursor-pointer"
+                className="flex flex-col items-center py-3 rounded-xl hover:bg-bg-raised/40 transition-colors duration-250 cursor-pointer"
+                title={`${count} active task${count !== 1 ? "s" : ""} on ${fullDateStr}`}
                 style={
                   isToday
                     ? { background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)" }
@@ -350,12 +386,28 @@ export default function DashboardView({
                     </div>
                   )}
                 </div>
-                <span className="text-[11px] text-text-muted mt-1">
+                <span className="text-[11px] text-text-muted mt-1 font-medium">
                   {count} task{count !== 1 ? "s" : ""}
                 </span>
               </div>
             );
           })}
+        </div>
+        
+        {/* Color Dot Legend */}
+        <div className="flex justify-center flex-wrap gap-6 pt-3 border-t border-border/30 text-[10px] text-text-muted">
+          <div className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-border" /> Free / None
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-success" /> Low Load (1 task)
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-warning" /> Medium Load (2 tasks)
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-error" /> High Load (3+ tasks)
+          </div>
         </div>
       </div>
     </>

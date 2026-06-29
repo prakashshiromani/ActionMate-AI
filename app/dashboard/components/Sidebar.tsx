@@ -256,7 +256,7 @@ export default function Sidebar({
                 height: "18px",
                 background: isDark ? "rgba(59,130,246,0.4)" : "rgba(245,158,11,0.4)",
                 border: `1px solid ${isDark ? "rgba(59,130,246,0.5)" : "rgba(245,158,11,0.5)"}`,
-                justifyContent: isDark ? "flex-start" : "flex-end",
+                justifyContent: isDark ? "flex-end" : "flex-start",
               }}
             >
               <span

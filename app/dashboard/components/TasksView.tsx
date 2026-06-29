@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 
 interface MockTask {
   id: string;
@@ -33,9 +33,29 @@ export default function TasksView({
   setInputText,
   setMessages,
 }: TasksViewProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+
+  // Helper to format status
+  const formatStatus = (status: string) => {
+    if (!status) return "";
+    return status
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
+  const filteredTasks = tasks.filter((task) => {
+    const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === "all" || task.status === statusFilter;
+    const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
+    return matchesSearch && matchesStatus && matchesPriority;
+  });
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Your Tasks</h1>
           <p className="text-text-muted text-sm mt-1">Manage and track your custom subtask breakdowns.</p>
@@ -58,14 +78,60 @@ export default function TasksView({
         </button>
       </div>
 
-      <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
+      {/* Filter and Search Bar controls */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 border border-border bg-bg-surface rounded-2xl">
+        <div>
+          <input
+            type="text"
+            placeholder="Search tasks..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-bg-base border border-border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-accent-primary text-text-primary placeholder:text-text-muted"
+          />
+        </div>
+        <div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full bg-bg-base border border-border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-accent-primary text-text-primary"
+          >
+            <option value="all">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div>
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="w-full bg-bg-base border border-border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-accent-primary text-text-primary"
+          >
+            <option value="all">All Priorities</option>
+            <option value="high">High Priority</option>
+            <option value="medium">Medium Priority</option>
+            <option value="low">Low Priority</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-bg-surface p-6">
         <div className="divide-y divide-border/50">
-          {tasks.length === 0 ? (
-            <p className="text-sm text-text-muted italic text-center py-6">
-              No tasks available. Use the assistant on the right to create one.
-            </p>
+          {filteredTasks.length === 0 ? (
+            <div className="text-center py-12 space-y-3.5 select-none">
+              <span className="text-4xl block">📋</span>
+              <div>
+                <p className="text-sm font-bold text-text-primary">No tasks found</p>
+                <p className="text-xs text-text-muted mt-1 max-w-sm mx-auto">
+                  {tasks.length === 0 
+                    ? "Your workspace is empty. Create a task using the AI voice/text chat assistant on the right!" 
+                    : "No tasks match your filter criteria. Try adjusting the search text or dropdown selectors."}
+                </p>
+              </div>
+            </div>
           ) : (
-            tasks.map((task) => (
+            filteredTasks.map((task) => (
               <div
                 key={task.id}
                 onClick={() => setSelectedTask(task)}
@@ -75,7 +141,7 @@ export default function TasksView({
                   <h4 className="font-bold text-base text-text-primary leading-tight">{task.title}</h4>
                   <p className="text-xs text-text-muted flex items-center gap-1">📅 Due: {task.deadlineText}</p>
                 </div>
-                <div className="flex items-center gap-3 self-end sm:self-auto">
+                <div className="flex items-center gap-3 self-end sm:self-auto shrink-0">
                   <span
                     className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                       task.priority === "high"
@@ -96,7 +162,7 @@ export default function TasksView({
                         : "bg-accent-ai/10 text-accent-ai"
                     }`}
                   >
-                    {task.status}
+                    {formatStatus(task.status)}
                   </span>
                   <span className="text-xs text-text-muted font-mono bg-bg-base px-2 py-1 rounded border border-border/30">
                     {task.completedSubtasksCount}/{task.subtasksCount} subtasks

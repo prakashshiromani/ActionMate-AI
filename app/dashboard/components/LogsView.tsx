@@ -37,7 +37,15 @@ export default function LogsView({ actionsMap, tasks }: LogsViewProps) {
 
       <div className="rounded-2xl border border-border bg-bg-surface p-6">
         {allActions.length === 0 ? (
-          <p className="text-sm text-text-muted italic text-center py-8">No activity logs recorded yet.</p>
+          <div className="text-center py-12 space-y-3.5 select-none">
+            <span className="text-4xl block">⚡</span>
+            <div>
+              <p className="text-sm font-bold text-text-primary">No activity logs recorded yet</p>
+              <p className="text-xs text-text-muted mt-1 max-w-sm mx-auto">
+                Once the AI assistant executes tasks or schedules slots, you will see a real-time audit trail of all background processes here.
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="relative pl-6 space-y-6 border-l-2 border-accent-primary/30 ml-3">
             {allActions.map((action, i) => {

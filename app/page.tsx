@@ -2,10 +2,27 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-bg-base text-text-primary font-sans overflow-x-hidden">
+    <div className="flex flex-col min-h-screen bg-bg-base text-text-primary font-sans overflow-x-hidden pt-16">
+      
+      {/* Sticky top navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b border-border/40 bg-bg-base/70 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-accent-primary to-accent-ai flex items-center justify-center text-white text-xs font-bold shadow-md">
+            🤖
+          </div>
+          <span className="font-bold text-sm tracking-tight">ActionMate AI</span>
+        </div>
+        <div className="flex items-center gap-6">
+          <a href="#features" className="text-xs text-text-muted hover:text-text-primary transition font-semibold">Features</a>
+          <a href="#how-it-works" className="text-xs text-text-muted hover:text-text-primary transition font-semibold">How It Works</a>
+          <Link href="/login" className="bg-accent-primary hover:brightness-110 active:scale-95 transition text-white text-xs font-bold px-4 py-2 rounded-lg shadow-md duration-200">
+            Get Started
+          </Link>
+        </div>
+      </nav>
 
       {/* Hero Section */}
-      <header className="relative flex flex-col items-center justify-center text-center px-4 pt-28 pb-20 max-w-5xl mx-auto w-full space-y-8">
+      <header className="relative flex flex-col items-center justify-center text-center px-4 pt-16 pb-20 max-w-5xl mx-auto w-full space-y-8">
         {/* Ambient glow blobs */}
         <div
           className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full opacity-20 blur-3xl"
@@ -15,10 +32,10 @@ export default function Home() {
 
         {/* Animated Robot Badge */}
         <div
-          className="relative flex h-24 w-24 items-center justify-center rounded-3xl shadow-2xl"
-          style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)", boxShadow: "0 0 60px rgba(139,92,246,0.5), 0 20px 40px rgba(59,130,246,0.3)" }}
+          className="relative flex h-20 w-20 items-center justify-center rounded-2xl shadow-2xl"
+          style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)", boxShadow: "0 0 40px rgba(139,92,246,0.4), 0 10px 20px rgba(59,130,246,0.2)" }}
         >
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <rect x="3" y="8" width="18" height="13" rx="3" fill="white" fillOpacity="0.95"/>
             <path d="M9 8V6a3 3 0 016 0v2" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
             <circle cx="9" cy="14" r="1.8" fill="#3B82F6"/>
@@ -26,7 +43,7 @@ export default function Home() {
             <path d="M9 18h6" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
           {/* Pulsing ring */}
-          <span className="absolute -inset-1 rounded-[28px] border border-purple-500/30 animate-ping opacity-40" aria-hidden="true" />
+          <span className="absolute -inset-1 rounded-[20px] border border-purple-500/30 animate-ping opacity-40" aria-hidden="true" />
         </div>
 
         <div className="space-y-4 relative">
@@ -58,7 +75,7 @@ export default function Home() {
             { label: "Google Calendar", color: "#34A853" },
             { label: "Gmail API", color: "#EA4335" },
             { label: "Firebase", color: "#FBBC05" },
-            { label: "Next.js 15", color: "#6366f1" },
+            { label: "Next.js 16", color: "#6366f1" },
           ].map((tech) => (
             <span
               key={tech.label}
@@ -85,10 +102,10 @@ export default function Home() {
           </Link>
           <a
             href="#how-it-works"
-            className="flex-1 font-bold py-4 px-8 rounded-xl transition-all duration-200 text-center active:scale-95"
+            className="flex-1 font-bold py-4 px-8 rounded-xl transition-all duration-200 text-center active:scale-95 border"
             style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
+              background: "rgba(255,255,255,0.03)",
+              borderColor: "rgba(255,255,255,0.2)",
               color: "var(--text-primary)",
             }}
           >
@@ -96,8 +113,58 @@ export default function Home() {
           </a>
         </div>
 
+        {/* Interactive Dashboard Mockup Card */}
+        <div className="w-full max-w-4xl border border-border/80 rounded-2xl bg-bg-surface/50 p-3 shadow-2xl relative overflow-hidden backdrop-blur-sm group/mockup">
+          <div className="flex items-center gap-1.5 pb-2.5 px-1 border-b border-border/40">
+            <span className="w-3 h-3 rounded-full bg-error/30" />
+            <span className="w-3 h-3 rounded-full bg-warning/30" />
+            <span className="w-3 h-3 rounded-full bg-success/30" />
+            <span className="text-[10px] text-text-muted font-mono ml-4">https://actionmate-ai.app/dashboard</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 h-64 text-left font-sans select-none overflow-hidden">
+            {/* Mock sidebar */}
+            <div className="hidden md:flex flex-col gap-2.5 border-r border-border/30 pr-3 text-[11px] text-text-muted">
+              <div className="h-6 bg-accent-primary/10 rounded flex items-center px-2 font-bold text-accent-primary">📊 Dashboard</div>
+              <div className="h-6 rounded hover:bg-bg-raised/40 flex items-center px-2">📅 Calendar</div>
+              <div className="h-6 rounded hover:bg-bg-raised/40 flex items-center px-2">📧 Agent Logs</div>
+              <div className="h-6 rounded hover:bg-bg-raised/40 flex items-center px-2">⚙️ Settings</div>
+            </div>
+            {/* Mock center dashboard */}
+            <div className="md:col-span-2 flex flex-col gap-3">
+              <div className="p-3 border border-error/30 bg-error/5 rounded-xl text-xs text-error font-medium flex items-center justify-between animate-pulse">
+                <span>⚠️ Conflict: submission vs presentation at 5 PM</span>
+                <span className="px-2 py-0.5 bg-error text-white rounded text-[10px]">Resolve</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="p-2.5 border border-border/50 bg-bg-surface/80 rounded-xl">
+                  <span className="text-[9px] font-bold text-error uppercase">High Priority</span>
+                  <p className="text-xs font-bold text-text-primary mt-1 line-clamp-1">Submit DBMS Assignment</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Progress: 1/5 subtasks</p>
+                </div>
+                <div className="p-2.5 border border-border/50 bg-bg-surface/80 rounded-xl">
+                  <span className="text-[9px] font-bold text-warning uppercase">Medium Priority</span>
+                  <p className="text-xs font-bold text-text-primary mt-1 line-clamp-1">Prepare ER Diagrams</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Progress: 3/3 completed</p>
+                </div>
+              </div>
+            </div>
+            {/* Mock Chat Panel */}
+            <div className="border-l border-border/30 pl-3 flex flex-col gap-2.5">
+              <div className="text-xs font-bold text-text-primary border-b border-border/30 pb-1.5">ActionMate AI</div>
+              <div className="flex-1 space-y-2 overflow-hidden text-[10px]">
+                <div className="p-2 rounded-lg bg-accent-primary/10 text-text-primary">I found a schedule conflict tomorrow. Drafting extension...</div>
+                <div className="p-2 rounded-lg bg-bg-surface border border-border">Draft email to Prof. Sharma?</div>
+              </div>
+              <div className="h-8 border border-border/80 rounded-xl bg-bg-base flex items-center justify-between px-2 text-[10px] text-text-muted">
+                <span>Type command...</span>
+                <span>🎙️</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Stats Bar */}
-        <div className="flex flex-wrap justify-center gap-8 pt-4">
+        <div className="w-full pt-10 mt-12 border-t border-border/20 flex flex-wrap justify-center gap-12 md:gap-20">
           {[
             { value: "10x", label: "Faster Task Resolution" },
             { value: "3", label: "Google APIs Integrated" },
@@ -242,13 +309,30 @@ export default function Home() {
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
             Join the future of productivity. Sign in with Google and let ActionMate handle the execution.
           </p>
-          <Link
-            href="/login"
-            className="inline-block text-white font-bold py-4 px-10 rounded-xl transition-all duration-200 active:scale-95"
-            style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)", boxShadow: "0 4px 24px rgba(139,92,246,0.4)" }}
-          >
-            Start Free with Google →
-          </Link>
+          <div className="space-y-4">
+            <Link
+              href="/login"
+              className="inline-block text-white font-bold py-4 px-10 rounded-xl transition-all duration-200 active:scale-95"
+              style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)", boxShadow: "0 4px 24px rgba(139,92,246,0.4)" }}
+            >
+              Start Free with Google →
+            </Link>
+            
+            {/* Social Proof rating */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <div className="flex -space-x-2">
+                <span className="w-8 h-8 rounded-full bg-slate-700 border-2 border-bg-surface flex items-center justify-center text-xs shadow">👨‍💻</span>
+                <span className="w-8 h-8 rounded-full bg-purple-700 border-2 border-bg-surface flex items-center justify-center text-xs shadow">👩‍🎓</span>
+                <span className="w-8 h-8 rounded-full bg-blue-700 border-2 border-bg-surface flex items-center justify-center text-xs shadow">👨‍💼</span>
+              </div>
+              <div className="text-left text-xs text-text-muted">
+                <div className="flex items-center gap-0.5 text-warning font-bold">
+                  ⭐⭐⭐⭐⭐ <span className="text-text-primary ml-1 font-mono">4.9/5</span>
+                </div>
+                <div>Loved by 1,200+ developers, students, and coordinators</div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

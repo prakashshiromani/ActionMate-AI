@@ -1,6 +1,8 @@
 "use client";
 
 import React, { ReactNode, useState, useEffect } from "react";
+import AgentActionCard from "@/components/AgentActionCard";
+import { PendingAction } from "@/types";
 
 function MessageTimestamp({ timestamp }: { timestamp: Date }) {
   const [label, setLabel] = useState<string | null>(null);
@@ -14,8 +16,6 @@ function MessageTimestamp({ timestamp }: { timestamp: Date }) {
     <div className="mt-1 text-[9px] opacity-40 text-right select-none font-mono">{label}</div>
   );
 }
-import AgentActionCard from "@/components/AgentActionCard";
-import { PendingAction } from "@/types";
 
 interface ChatMessage {
   sender: "user" | "ai";
@@ -88,33 +88,40 @@ export default function ChatPanel({
   textareaRef,
   renderMessageText,
 }: ChatPanelProps) {
+  // Only display the welcome empty state if the user has not sent any message yet
+  const showWelcomeEmptyState = messages.length <= 1 && !loadingText && messages[0]?.sender === "ai";
+
   return (
     <aside
       className={`fixed inset-y-0 right-0 z-20 w-full flex flex-col transform md:relative md:translate-x-0 ${
         isResizing ? "" : "transition-all duration-300"
       } ${chatOpen ? "translate-x-0" : "translate-x-full"}`}
       style={{
-        width: isDesktop ? `${chatWidth}px` : "100%",
+        width: isDesktop ? (chatOpen ? `${chatWidth}px` : "0px") : "100%",
+        minWidth: isDesktop ? (chatOpen ? "280px" : "0px") : "100%",
         maxWidth: isDesktop ? "none" : "100%",
         background: isDark
           ? "linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(20,30,55,0.95) 100%)"
           : "linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(241,245,249,0.98) 100%)",
         backdropFilter: "blur(20px)",
-        borderLeft: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(0,0,0,0.07)",
-        boxShadow: isDark ? "-4px 0 24px rgba(0,0,0,0.3)" : "-4px 0 24px rgba(0,0,0,0.06)",
+        borderLeft: isDesktop && !chatOpen ? "none" : (isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(0,0,0,0.07)"),
+        boxShadow: chatOpen ? (isDark ? "-4px 0 24px rgba(0,0,0,0.3)" : "-4px 0 24px rgba(0,0,0,0.06)") : "none",
+        visibility: isDesktop && !chatOpen ? "hidden" : "visible",
       }}
     >
       {/* Resizer Handle */}
-      <div
-        onMouseDown={startResizing}
-        className={`hidden md:block absolute top-0 bottom-0 left-0 w-1.5 cursor-col-resize hover:bg-accent-primary/40 transition-colors z-30 ${
-          isResizing ? "bg-accent-primary" : "bg-transparent"
-        }`}
-      />
+      {chatOpen && (
+        <div
+          onMouseDown={startResizing}
+          className={`hidden md:block absolute top-0 bottom-0 left-0 w-1.5 cursor-col-resize hover:bg-accent-primary/40 transition-colors z-30 ${
+            isResizing ? "bg-accent-primary" : "bg-transparent"
+          }`}
+        />
+      )}
 
       {/* Header */}
       <div
-        className="p-4 flex justify-between items-center backdrop-blur-md"
+        className="p-4 flex justify-between items-center backdrop-blur-md shrink-0"
         style={{
           borderBottom: isDark ? "1px solid rgba(255,255,255,0.06)" : "1px solid var(--border)",
           background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
@@ -127,9 +134,9 @@ export default function ChatPanel({
           </div>
           <div>
             <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-              ActionMate AI Agent
+              ActionMate AI Assistant
             </h3>
-            <p className="text-[11px] text-blue-400 font-medium">Always ready to act</p>
+            <p className="text-[11px] text-blue-400 font-medium">Always ready to resolve</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -141,6 +148,18 @@ export default function ChatPanel({
           >
             🗑️
           </button>
+          
+          {/* Desktop collapse button */}
+          <button
+            onClick={() => setChatOpen(false)}
+            title="Collapse Assistant Panel"
+            aria-label="Collapse Assistant Panel"
+            className="text-text-muted hover:text-text-primary text-xs p-1.5 rounded-lg hover:bg-bg-raised transition-colors border border-transparent hover:border-border/30 cursor-pointer hidden md:block"
+          >
+            ➡️
+          </button>
+
+          {/* Mobile close button */}
           <button
             onClick={() => setChatOpen(false)}
             className="md:hidden text-lg p-1 transition-colors"
@@ -154,69 +173,100 @@ export default function ChatPanel({
 
       {/* Conversation history area */}
       <div
-        className="flex-1 p-4 overflow-y-auto space-y-4"
+        className="flex-1 p-4 overflow-y-auto space-y-4 flex flex-col justify-start"
         role="log"
         aria-live="polite"
         aria-label="Chat conversation history"
       >
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} animate-fade-in w-full`}>
-            <div
-              className={`${
-                msg.actions && !msg.executed && !msg.dismissed ? "w-full max-w-full" : "max-w-[85%]"
-              } rounded-2xl p-3.5 text-sm ${
-                msg.sender === "user" ? "text-white rounded-tr-none shadow-lg" : "rounded-tl-none"
-              }`}
-              style={
-                msg.sender === "user"
-                  ? {
-                      background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
-                      boxShadow: "0 4px 14px rgba(139,92,246,0.25)",
-                    }
-                  : {
-                      background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.04)",
-                      border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)",
-                      color: "var(--text-primary)",
-                    }
-              }
-            >
-              <p className="leading-relaxed">{renderMessageText(msg.text)}</p>
-
-              {/* Relative timestamp */}
-              {msg.timestamp && <MessageTimestamp timestamp={msg.timestamp} />}
-
-              {/* ActionCard integration inside AI response */}
-              {msg.actions && !msg.executed && !msg.dismissed && (
-                <div className="mt-4">
-                  <AgentActionCard
-                    pendingActions={msg.actions}
-                    taskId={msg.taskId || ""}
-                    onSuccess={(results) => handleActionSuccess(i, results, msg.taskId)}
-                    onDismiss={() => handleActionDismiss(i)}
-                    isAutopilot={settingsState.automationMode === "autopilot"}
-                  />
-                </div>
-              )}
-              {msg.actions && msg.executed && (
-                <div className="mt-4 text-xs text-green-400 font-bold flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-xl p-3">
-                  <span>✓</span> Recommendation Approved & Executed
-                </div>
-              )}
-              {msg.actions && msg.dismissed && (
-                <div
-                  className="mt-4 text-xs font-bold flex items-center gap-1.5 rounded-xl p-3"
-                  style={{
-                    color: "var(--text-muted)",
-                    background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.04)",
-                    border: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)",
-                  }}
-                >
-                  <span>✕</span> Recommendation Dismissed
-                </div>
-              )}
+        {showWelcomeEmptyState ? (
+          /* Animated Welcome Illustration and tips empty state */
+          <div className="flex flex-col items-center justify-center text-center p-6 space-y-5 my-auto h-full opacity-90 select-none animate-fade-in">
+            <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-accent-primary/10 to-accent-ai/10 border border-accent-primary/20 flex items-center justify-center text-3xl shadow-inner relative">
+              🤖
+              <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-bg-surface animate-pulse" />
+            </div>
+            <div className="space-y-1.5">
+              <h4 className="font-extrabold text-sm text-text-primary">How can I help you, Aryan?</h4>
+              <p className="text-[11px] text-text-muted max-w-[220px] leading-relaxed mx-auto">
+                I can sync calendar slots, draft email confirmations, and resolve scheduling conflicts autonomously.
+              </p>
+            </div>
+            <div className="border border-border/80 bg-bg-surface/50 rounded-xl p-3 text-left w-full text-[11px] text-text-muted space-y-2 max-w-[260px] shadow-sm">
+              <span className="font-bold text-text-primary block">Try saying or typing:</span>
+              <button 
+                onClick={() => setInputText("Check for conflicts tomorrow")}
+                className="w-full text-left block italic hover:text-accent-primary hover:underline cursor-pointer transition py-0.5 text-text-muted hover:text-text-primary font-medium"
+              >
+                &bull; &quot;Check for conflicts tomorrow&quot;
+              </button>
+              <button 
+                onClick={() => setInputText("Submit DBMS Assignment by 5 PM")}
+                className="w-full text-left block italic hover:text-accent-primary hover:underline cursor-pointer transition py-0.5 text-text-muted hover:text-text-primary font-medium"
+              >
+                &bull; &quot;Submit DBMS Assignment by 5 PM&quot;
+              </button>
             </div>
           </div>
-        ))}
+        ) : (
+          messages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} animate-fade-in w-full`}>
+              <div
+                className={`${
+                  msg.actions && !msg.executed && !msg.dismissed ? "w-full max-w-full" : "max-w-[85%]"
+                } rounded-2xl p-3.5 text-sm ${
+                  msg.sender === "user" ? "text-white rounded-tr-none shadow-lg" : "rounded-tl-none"
+                }`}
+                style={
+                  msg.sender === "user"
+                    ? {
+                        background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
+                        boxShadow: "0 4px 14px rgba(139,92,246,0.25)",
+                      }
+                    : {
+                        background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.04)",
+                        border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)",
+                        color: "var(--text-primary)",
+                      }
+                }
+              >
+                <p className="leading-relaxed">{renderMessageText(msg.text)}</p>
+
+                {/* Relative timestamp */}
+                {msg.timestamp && <MessageTimestamp timestamp={msg.timestamp} />}
+
+                {/* ActionCard integration inside AI response */}
+                {msg.actions && !msg.executed && !msg.dismissed && (
+                  <div className="mt-4">
+                    <AgentActionCard
+                      pendingActions={msg.actions}
+                      taskId={msg.taskId || ""}
+                      onSuccess={(results) => handleActionSuccess(i, results, msg.taskId)}
+                      onDismiss={() => handleActionDismiss(i)}
+                      isAutopilot={settingsState.automationMode === "autopilot"}
+                    />
+                  </div>
+                )}
+                {msg.actions && msg.executed && (
+                  <div className="mt-4 text-xs text-green-400 font-bold flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-xl p-3">
+                    <span>✓</span> Recommendation Approved & Executed
+                  </div>
+                )}
+                {msg.actions && msg.dismissed && (
+                  <div
+                    className="mt-4 text-xs font-bold flex items-center gap-1.5 rounded-xl p-3"
+                    style={{
+                      color: "var(--text-muted)",
+                      background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.04)",
+                      border: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)",
+                    }}
+                  >
+                    <span>✕</span> Recommendation Dismissed
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
 
         {/* Narrated Status Loading Indicator */}
         {loadingText && (
@@ -239,9 +289,9 @@ export default function ChatPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick suggestions area */}
+      {/* Quick suggestions area - horizontal scroll flex box */}
       <div
-        className="px-4 py-2 flex flex-wrap gap-1.5"
+        className="px-4 py-2 flex flex-nowrap overflow-x-auto gap-2.5 scrollbar-none pb-2.5 shrink-0"
         style={{
           background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.02)",
           borderTop: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)",
@@ -255,7 +305,7 @@ export default function ChatPanel({
           <button
             key={idx}
             onClick={() => setInputText(chip.prompt)}
-            className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all cursor-pointer"
+            className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap shrink-0"
             style={{
               border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid var(--border)",
               background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.03)",
@@ -281,7 +331,7 @@ export default function ChatPanel({
 
       {/* Chat panel bottom input bar */}
       <div
-        className="p-3 backdrop-blur-md"
+        className="p-3 backdrop-blur-md shrink-0"
         style={{
           borderTop: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--border)",
           background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",

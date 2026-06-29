@@ -793,6 +793,7 @@ export default function Dashboard() {
           const status = completedCount === t.subtasksCount ? "completed" as const : t.status;
 
           if (status === "completed" && t.status !== "completed") {
+            playTaskComplete();
             setTimeout(() => {
               setSelectedTask(null);
               setActiveTab("completed");
@@ -927,6 +928,7 @@ export default function Dashboard() {
         setActiveConflict(null);
       }
       
+      playAiMessage();
       setMessages((prev) => [
         ...prev,
         {
@@ -1232,6 +1234,7 @@ export default function Dashboard() {
   };
 
   const handleActionSuccess = async (index: number, results: any[], targetTaskId?: string) => {
+    playSuccess();
     const calendarResult = results.find(r => r.type === "CALENDAR_BLOCK");
     const gmailResult = results.find(r => r.type === "GMAIL_DRAFT");
 
@@ -1389,6 +1392,7 @@ export default function Dashboard() {
   };
 
   const handleActionDismiss = (index: number) => {
+    playDismiss();
     const msg = messages[index];
     const taskId = msg.taskId;
 

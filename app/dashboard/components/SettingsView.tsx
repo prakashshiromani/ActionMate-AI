@@ -340,76 +340,157 @@ export default function SettingsView({
         {/* INTEGRATIONS TAB */}
         {activeSettingsTab === "integrations" && (
           <div id="settings-panel-integrations" className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-            <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-              <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
-                <span className="text-xl">📅</span> Google Calendar Sync
-              </h3>
+            {/* Google OAuth Connection statuses */}
+            <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4 col-span-1 lg:col-span-2">
+              <h3 className="text-lg font-bold text-text-primary">Connected Accounts</h3>
               <p className="text-xs text-text-muted leading-relaxed">
-                Connect your account to allow ActionMate to check availability and create deep work slots autonomously.
+                Google workspace credentials required for live Calendar & Gmail write processes.
               </p>
-              <div className="pt-2">
-                {isGoogleConnected ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-green-500/10 border border-green-500/20 text-green-400 font-bold rounded-xl text-xs">
-                      <span>✓ Connected & Active</span>
-                      <button
-                        onClick={handleDisconnectSilentSync}
-                        className="text-error bg-error/10 hover:bg-error/15 border border-error/20 px-2 py-1 rounded-lg font-bold text-[10px]"
-                      >
-                        Disconnect
-                      </button>
+
+              {(() => {
+                const token = typeof window !== "undefined" ? sessionStorage.getItem("googleAccessToken") : null;
+                const isConnected = !!(token && token !== "");
+                const isSandbox = token === "mock-sandbox-token" || token === "mock-token-refresh" || !!(token && token.startsWith("mock-"));
+
+                let statusColor = "text-error bg-error/15 border-error/20";
+                let statusText = "Not Connected";
+                if (isConnected) {
+                  if (isSandbox) {
+                    statusColor = "text-warning bg-warning/15 border-warning/20";
+                    statusText = "Simulated Sandbox Mode";
+                  } else {
+                    statusColor = "text-success bg-success/15 border-success/20";
+                    statusText = "Connected ✓";
+                  }
+                }
+
+                return (
+                  <div className="space-y-4 mt-2">
+                    <div className="space-y-3">
+                      {/* Google Calendar Row */}
+                      <div className="flex items-center justify-between py-3 border-b border-border/30">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-lg">📅</span>
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold text-text-primary">Google Calendar</p>
+                            <span className={`text-[9px] px-2 py-0.5 border rounded-full font-bold uppercase ${statusColor}`}>
+                              {statusText}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {isConnected ? (
+                            <button
+                              onClick={() => {
+                                sessionStorage.removeItem("googleAccessToken");
+                                window.location.href = "/login";
+                              }}
+                              className="px-3 py-1.5 border border-error/30 hover:bg-error/10 text-error text-xs font-bold rounded-lg transition"
+                            >
+                              Disconnect
+                            </button>
+                          ) : (
+                            <button
+                              onClick={handleReAuthorize}
+                              className="px-3 py-1.5 bg-accent-primary hover:brightness-110 text-white text-xs font-bold rounded-lg transition shadow"
+                            >
+                              Authorize
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Gmail Row */}
+                      <div className="flex items-center justify-between py-3 border-b border-border/30">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-lg">📧</span>
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold text-text-primary">Gmail Actions</p>
+                            <span className={`text-[9px] px-2 py-0.5 border rounded-full font-bold uppercase ${statusColor}`}>
+                              {statusText}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {isConnected ? (
+                            <button
+                              onClick={() => {
+                                sessionStorage.removeItem("googleAccessToken");
+                                window.location.href = "/login";
+                              }}
+                              className="px-3 py-1.5 border border-error/30 hover:bg-error/10 text-error text-xs font-bold rounded-lg transition"
+                            >
+                              Disconnect
+                            </button>
+                          ) : (
+                            <button
+                              onClick={handleReAuthorize}
+                              className="px-3 py-1.5 bg-accent-primary hover:brightness-110 text-white text-xs font-bold rounded-lg transition shadow"
+                            >
+                              Authorize
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Permanent Silent Sync Row */}
+                      <div className="flex items-center justify-between py-3 border-b border-border/30">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-lg">⚡</span>
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold text-text-primary">Permanent Silent Sync</p>
+                            <span className={`text-[9px] px-2 py-0.5 border rounded-full font-bold uppercase ${
+                              isGoogleConnected 
+                                ? "text-success bg-success/15 border-success/20" 
+                                : "text-error bg-error/15 border-error/20"
+                            }`}>
+                              {isGoogleConnected ? "Enabled ✓" : "Not Enabled"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {isGoogleConnected ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-success font-bold px-3 py-1.5 bg-success/5 border border-success/20 rounded-lg">
+                                Active & Locked
+                              </span>
+                              <button
+                                onClick={handleDisconnectSilentSync}
+                                className="px-3 py-1.5 border border-error/30 hover:bg-error/10 text-error text-xs font-bold rounded-lg transition cursor-pointer"
+                              >
+                                Disconnect
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={handleConnectSilentSync}
+                              className="px-3 py-1.5 bg-accent-primary hover:brightness-110 text-white text-xs font-bold rounded-lg transition shadow cursor-pointer"
+                            >
+                              Enable
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    {reAuthLoading ? (
-                      <p className="text-xs text-text-muted italic animate-pulse">Refreshing access token...</p>
-                    ) : (
-                      <button
-                        onClick={handleReAuthorize}
-                        className="w-full bg-bg-base hover:bg-bg-raised text-text-primary border border-border py-2 rounded-xl text-xs font-semibold transition"
-                      >
-                        🔄 Re-Authorize Account Permissions
-                      </button>
+
+                    {/* Token Expired warnings */}
+                    {isConnected && !isSandbox && (
+                      <div className="p-3 bg-success/5 border border-success/20 rounded-xl flex items-center justify-between">
+                        <p className="text-[10px] text-text-muted leading-relaxed">
+                          Active Access Token verified. Token is refreshed dynamically during AI calls.
+                        </p>
+                        <button
+                          onClick={handleReAuthorize}
+                          disabled={reAuthLoading}
+                          className="bg-success text-white font-bold text-[9px] px-2.5 py-1.5 rounded-lg hover:brightness-110 disabled:opacity-60 transition shrink-0"
+                        >
+                          {reAuthLoading ? "Signing in..." : "Re-Authorize"}
+                        </button>
+                      </div>
                     )}
                   </div>
-                ) : (
-                  <button
-                    onClick={handleConnectSilentSync}
-                    className="w-full bg-gradient-to-tr from-blue-600 to-violet-600 hover:brightness-110 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md transition"
-                  >
-                    Connect Google Account
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-bg-surface p-6 space-y-4">
-              <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
-                <span className="text-xl">📧</span> Gmail API Integration
-              </h3>
-              <p className="text-xs text-text-muted leading-relaxed">
-                Allow the agent to autonomously draft professional extension requests or schedule confirmations for your review.
-              </p>
-              <div className="pt-2">
-                {isGoogleConnected ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-green-500/10 border border-green-500/20 text-green-400 font-bold rounded-xl text-xs">
-                      <span>✓ Connected & Active</span>
-                      <button
-                        onClick={handleDisconnectSilentSync}
-                        className="text-error bg-error/10 hover:bg-error/15 border border-error/20 px-2 py-1 rounded-lg font-bold text-[10px]"
-                      >
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleConnectSilentSync}
-                    className="w-full bg-gradient-to-tr from-blue-600 to-violet-600 hover:brightness-110 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md transition"
-                  >
-                    Connect Google Account
-                  </button>
-                )}
-              </div>
+                );
+              })()}
             </div>
           </div>
         )}

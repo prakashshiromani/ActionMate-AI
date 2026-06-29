@@ -1,6 +1,19 @@
 "use client";
 
-import React, { ReactNode } from "react";
+import React, { ReactNode, useState, useEffect } from "react";
+
+function MessageTimestamp({ timestamp }: { timestamp: Date }) {
+  const [label, setLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLabel(new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }, [timestamp]);
+
+  if (!label) return null;
+  return (
+    <div className="mt-1 text-[9px] opacity-40 text-right select-none font-mono">{label}</div>
+  );
+}
 import AgentActionCard from "@/components/AgentActionCard";
 import { PendingAction } from "@/types";
 
@@ -170,11 +183,7 @@ export default function ChatPanel({
               <p className="leading-relaxed">{renderMessageText(msg.text)}</p>
 
               {/* Relative timestamp */}
-              {msg.timestamp && (
-                <div className="mt-1 text-[9px] opacity-40 text-right select-none font-mono">
-                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </div>
-              )}
+              {msg.timestamp && <MessageTimestamp timestamp={msg.timestamp} />}
 
               {/* ActionCard integration inside AI response */}
               {msg.actions && !msg.executed && !msg.dismissed && (

@@ -46,13 +46,23 @@ export default function Sidebar({
               boxShadow: "0 0 20px rgba(139,92,246,0.4)",
             }}
           >
-            {/* Robot SVG icon */}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="3" y="8" width="18" height="13" rx="3" fill="white" fillOpacity="0.9" />
-              <path d="M9 8V6a3 3 0 016 0v2" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-              <circle cx="9" cy="14" r="1.5" fill="#3B82F6" />
-              <circle cx="15" cy="14" r="1.5" fill="#8B5CF6" />
-              <path d="M9 18h6" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" />
+            {/* Premium Intersecting Spark Logo — Sleek Senior Developer Look */}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Outer spark / diamond */}
+              <path
+                d="M12 2L15 9L22 12L15 15L12 22L9 15L2 12L9 9L12 2Z"
+                fill="none"
+                stroke="white"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {/* Inner accent dot/spark */}
+              <path
+                d="M12 9L13 12L12 15L11 12L12 9Z"
+                fill="white"
+                opacity="0.9"
+              />
             </svg>
             {/* Pulsing dot */}
             <span
@@ -286,7 +296,10 @@ export default function Sidebar({
             <div className="relative flex-shrink-0">
               <div
                 className="h-9 w-9 rounded-xl flex items-center justify-center text-[13px] font-bold text-white shadow-md"
-                style={{ background: "linear-gradient(135deg, #8B5CF6, #3B82F6)" }}
+                style={{
+                  background: "linear-gradient(135deg, #7C3AED 0%, #2563EB 100%)",
+                  boxShadow: "0 0 0 2px rgba(139,92,246,0.35), 0 4px 12px rgba(99,102,241,0.3)",
+                }}
               >
                 {(auth?.currentUser?.displayName || auth?.currentUser?.email || "Aryan Mehta")
                   .charAt(0)
@@ -294,8 +307,8 @@ export default function Sidebar({
               </div>
               {/* Online dot */}
               <span
-                className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-400 border-2"
-                style={{ borderColor: "var(--bg-base)" }}
+                className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400"
+                style={{ boxShadow: "0 0 0 2px var(--bg-base)" }}
               />
             </div>
             <div className="opacity-0 group-hover:opacity-100 transition-all duration-200 min-w-0 w-0 overflow-hidden group-hover:w-auto">
@@ -310,36 +323,43 @@ export default function Sidebar({
               </p>
             </div>
           </div>
-          {auth?.currentUser && (
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
-                if (confirm("Are you sure you want to sign out of ActionMate?")) {
-                  try {
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (confirm("Are you sure you want to sign out of ActionMate?")) {
+                try {
+                  if (auth) {
                     const { signOut } = await import("firebase/auth");
                     await signOut(auth);
-                    sessionStorage.clear();
-                    localStorage.removeItem("sandboxTasks");
-                    localStorage.removeItem("sandboxSubtasks");
-                    localStorage.removeItem("sandboxActions");
-                    localStorage.removeItem("sandboxSettings");
-                    document.cookie = "actionmate_auth=; path=/; max-age=0";
-                    window.location.href = "/login";
-                  } catch (err) {
-                    console.error("Sign out failed:", err);
                   }
+                } catch (err) {
+                  console.error("Firebase sign out failed:", err);
                 }
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-1.5 hover:bg-error/10 text-text-muted hover:text-error rounded-lg transition-colors ml-auto hidden group-hover:block shrink-0"
-              title="Sign Out"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-            </button>
-          )}
+
+                try {
+                  await fetch("/api/auth/session", { method: "DELETE" });
+                } catch (err) {
+                  console.error("Session deletion failed:", err);
+                }
+
+                sessionStorage.clear();
+                localStorage.removeItem("sandboxTasks");
+                localStorage.removeItem("sandboxSubtasks");
+                localStorage.removeItem("sandboxActions");
+                localStorage.removeItem("sandboxSettings");
+                document.cookie = "actionmate_auth=; path=/; max-age=0";
+                window.location.href = "/login";
+              }
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-1.5 hover:bg-error/10 text-text-muted hover:text-error rounded-lg transition-colors ml-auto hidden group-hover:block shrink-0"
+            title="Sign Out"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
       </div>
     </aside>

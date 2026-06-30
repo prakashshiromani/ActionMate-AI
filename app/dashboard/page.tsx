@@ -150,6 +150,7 @@ export default function Dashboard() {
   
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [paletteSearch, setPaletteSearch] = useState("");
+  const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -1078,7 +1079,7 @@ export default function Dashboard() {
               payload: {
                 to: "sharma.prof@example.com",
                 subject: `Extension Request: ${topic} submission`,
-                body: `Dear Prof. Sharma,\n\nI am writing to request a brief 24-hour extension on the ${topic} due tomorrow. Due to scheduling conflicts, I need a bit more time to complete it to standard.\n\nThank you,\nAryan`
+                body: `Dear Prof. Sharma,\n\nI am writing to request a brief 24-hour extension on the ${topic} due tomorrow. Due to scheduling conflicts, I need a bit more time to complete it to standard.\n\nThank you,\n${auth?.currentUser?.displayName || auth?.currentUser?.email?.split("@")[0] || "Aryan Mehta"}`
               },
               displaySummary: `Draft email to "sharma.prof@example.com" with subject "Extension Request: ${topic}"`
             }
@@ -1509,12 +1510,208 @@ export default function Dashboard() {
                 {activeTab === "completed" ? "Completed Tasks" : activeTab === "logs" ? "Agent Logs" : activeTab}
               </span>
             </div>
-            <button 
-              onClick={() => setChatOpen(!chatOpen)}
-              className="px-2.5 py-1.5 bg-bg-surface hover:bg-bg-raised border border-border text-[10px] font-bold rounded-lg flex items-center gap-1 transition text-text-primary"
-            >
-              💬 {chatOpen ? "Hide Chat" : "Show Chat"}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Theme Toggle */}
+              <button
+                onClick={toggleTheme}
+                title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                className="relative flex items-center gap-1.5 px-2.5 py-1.5 bg-bg-surface hover:bg-bg-raised border border-border text-[10px] font-bold rounded-lg transition active:scale-95"
+              >
+                {/* Sun/Moon icon */}
+                <span style={{ color: isDark ? "#93c5fd" : "#F59E0B", display: "flex", alignItems: "center" }}>
+                  {isDark ? (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z" />
+                    </svg>
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="5" />
+                      <line x1="12" y1="1" x2="12" y2="3" />
+                      <line x1="12" y1="21" x2="12" y2="23" />
+                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                      <line x1="1" y1="12" x2="3" y2="12" />
+                      <line x1="21" y1="12" x2="23" y2="12" />
+                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                    </svg>
+                  )}
+                </span>
+                {/* Mini Toggle Pill */}
+                <span
+                  className="flex items-center rounded-full transition-all duration-300"
+                  style={{
+                    width: "26px",
+                    height: "14px",
+                    padding: "2px",
+                    background: isDark ? "rgba(59,130,246,0.4)" : "rgba(245,158,11,0.4)",
+                    border: `1px solid ${isDark ? "rgba(59,130,246,0.5)" : "rgba(245,158,11,0.5)"}`,
+                    justifyContent: isDark ? "flex-end" : "flex-start",
+                  }}
+                >
+                  <span
+                    className="rounded-full"
+                    style={{
+                      width: "8px",
+                      height: "8px",
+                      background: isDark ? "#93c5fd" : "#F59E0B",
+                      transition: "all 0.3s ease",
+                    }}
+                  />
+                </span>
+              </button>
+
+              {/* Show/Hide Chat */}
+              <button 
+                onClick={() => setChatOpen(!chatOpen)}
+                className="px-2.5 py-1.5 bg-bg-surface hover:bg-bg-raised border border-border text-[10px] font-bold rounded-lg flex items-center gap-1.5 transition text-text-primary active:scale-95"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>{chatOpen ? "Hide Chat" : "Show Chat"}</span>
+              </button>
+
+              {/* Mobile User Avatar + Logout Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setMobileProfileOpen(!mobileProfileOpen)}
+                  className="relative h-8 w-8 rounded-xl flex items-center justify-center text-[12px] font-bold text-white shadow-lg transition active:scale-95"
+                  style={{
+                    background: "linear-gradient(135deg, #7C3AED 0%, #2563EB 100%)",
+                    boxShadow: "0 0 0 2px rgba(139,92,246,0.35), 0 4px 12px rgba(99,102,241,0.35)",
+                  }}
+                  title="Profile & Logout"
+                >
+                  {(auth?.currentUser?.displayName || auth?.currentUser?.email || "U")
+                    .charAt(0)
+                    .toUpperCase()}
+                  {/* Online dot */}
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400"
+                    style={{
+                      boxShadow: "0 0 0 2px var(--bg-base)",
+                    }}
+                  />
+                </button>
+
+                {/* Dropdown Menu */}
+                {mobileProfileOpen && (
+                  <>
+                    {/* Backdrop to close */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setMobileProfileOpen(false)}
+                    />
+                    <div
+                      className="absolute right-0 top-full mt-2 z-50 w-56 rounded-xl overflow-hidden animate-slide-down"
+                      style={{
+                        background: isDark ? "rgba(15,23,42,0.97)" : "rgba(255,255,255,0.97)",
+                        backdropFilter: "blur(20px)",
+                        border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.1)",
+                        boxShadow: isDark
+                          ? "0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset"
+                          : "0 16px 48px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04) inset",
+                      }}
+                    >
+                      {/* User Info */}
+                      <div className="px-4 py-3 border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)" }}>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="h-9 w-9 rounded-xl flex items-center justify-center text-[14px] font-bold text-white shadow-md flex-shrink-0"
+                            style={{
+                              background: "linear-gradient(135deg, #7C3AED 0%, #2563EB 100%)",
+                              boxShadow: "0 0 0 2px rgba(139,92,246,0.3), 0 4px 10px rgba(99,102,241,0.3)",
+                            }}
+                          >
+                            {(auth?.currentUser?.displayName || auth?.currentUser?.email || "U")
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p
+                              className="text-xs font-semibold truncate"
+                              style={{ color: "var(--text-primary)", maxWidth: "140px" }}
+                            >
+                              {auth?.currentUser?.displayName || auth?.currentUser?.email?.split("@")[0] || "User"}
+                            </p>
+                            <p className="text-[11px] truncate" style={{ color: "var(--text-muted)", maxWidth: "140px" }}>
+                              {auth?.currentUser?.email || "Pro Plan · Active"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Plan Badge */}
+                      <div className="px-4 py-2 border-b" style={{ borderColor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)" }}>
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                          style={{
+                            background: isDark ? "rgba(139,92,246,0.15)" : "rgba(139,92,246,0.1)",
+                            color: "#A78BFA",
+                            border: "1px solid rgba(139,92,246,0.2)",
+                          }}
+                        >
+                          ✦ Pro Plan · Active
+                        </span>
+                      </div>
+
+                      {/* Sign Out Button */}
+                      <div className="p-2">
+                        <button
+                          onClick={async () => {
+                            setMobileProfileOpen(false);
+                            if (confirm("Are you sure you want to sign out of ActionMate?")) {
+                              try {
+                                if (auth) {
+                                  const { signOut } = await import("firebase/auth");
+                                  await signOut(auth);
+                                }
+                              } catch (err) {
+                                console.error("Firebase sign out failed:", err);
+                              }
+
+                              try {
+                                await fetch("/api/auth/session", { method: "DELETE" });
+                              } catch (err) {
+                                console.error("Session deletion failed:", err);
+                              }
+
+                              sessionStorage.clear();
+                              localStorage.removeItem("sandboxTasks");
+                              localStorage.removeItem("sandboxSubtasks");
+                              localStorage.removeItem("sandboxActions");
+                              localStorage.removeItem("sandboxSettings");
+                              document.cookie = "actionmate_auth=; path=/; max-age=0";
+                              window.location.href = "/login";
+                            }
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-left"
+                          style={{
+                            color: "#EF4444",
+                            background: isDark ? "rgba(239,68,68,0.06)" : "rgba(239,68,68,0.05)",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background = isDark ? "rgba(239,68,68,0.12)" : "rgba(239,68,68,0.1)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = isDark ? "rgba(239,68,68,0.06)" : "rgba(239,68,68,0.05)")
+                          }
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                            <polyline points="16 17 21 12 16 7" />
+                            <line x1="21" y1="12" x2="9" y2="12" />
+                          </svg>
+                          <span className="text-xs font-semibold">Sign Out</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
           
           {loading ? (
@@ -1660,11 +1857,23 @@ export default function Dashboard() {
       {!chatOpen && (
         <button
           onClick={() => setChatOpen(true)}
-          className="hidden md:flex fixed bottom-6 right-6 z-40 bg-gradient-to-tr from-accent-primary to-accent-ai hover:brightness-110 active:scale-95 text-white h-12 w-12 rounded-full items-center justify-center shadow-[0_4px_24px_rgba(59,130,246,0.5)] transition duration-200 cursor-pointer animate-scale-up font-bold text-lg"
+          className="hidden md:flex fixed bottom-6 right-6 z-40 hover:brightness-110 active:scale-95 text-white h-13 w-13 rounded-2xl items-center justify-center transition duration-200 cursor-pointer animate-scale-up"
+          style={{
+            background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)",
+            boxShadow: "0 8px 32px rgba(99,102,241,0.5), 0 0 0 1px rgba(255,255,255,0.12) inset",
+            width: "52px",
+            height: "52px",
+          }}
           title="Open AI Assistant"
           aria-label="Open AI Assistant"
         >
-          💬
+          {/* MessageCircle icon — Lucide-style */}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <circle cx="9" cy="10" r="1" fill="white" stroke="none" />
+            <circle cx="12" cy="10" r="1" fill="white" stroke="none" />
+            <circle cx="15" cy="10" r="1" fill="white" stroke="none" />
+          </svg>
         </button>
       )}
 

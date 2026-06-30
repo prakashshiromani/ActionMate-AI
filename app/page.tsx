@@ -7,8 +7,18 @@ export default function Home() {
       {/* Sticky top navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b border-border/40 bg-bg-base/70 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-accent-primary to-accent-ai flex items-center justify-center text-white text-xs font-bold shadow-md">
-            🤖
+          <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-accent-primary to-accent-ai flex items-center justify-center text-white shadow-md">
+            {/* Premium Intersecting Spark Logo — Sleek Senior Developer Look */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M12 2L15 9L22 12L15 15L12 22L9 15L2 12L9 9L12 2Z"
+                fill="none"
+                stroke="white"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </div>
           <span className="font-bold text-sm tracking-tight">ActionMate AI</span>
         </div>
@@ -35,12 +45,21 @@ export default function Home() {
           className="relative flex h-20 w-20 items-center justify-center rounded-2xl shadow-2xl"
           style={{ background: "linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)", boxShadow: "0 0 40px rgba(139,92,246,0.4), 0 10px 20px rgba(59,130,246,0.2)" }}
         >
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <rect x="3" y="8" width="18" height="13" rx="3" fill="white" fillOpacity="0.95"/>
-            <path d="M9 8V6a3 3 0 016 0v2" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
-            <circle cx="9" cy="14" r="1.8" fill="#3B82F6"/>
-            <circle cx="15" cy="14" r="1.8" fill="#8B5CF6"/>
-            <path d="M9 18h6" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round"/>
+          {/* Premium Intersecting Spark Logo — Sleek Senior Developer Look */}
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path
+              d="M12 2L15 9L22 12L15 15L12 22L9 15L2 12L9 9L12 2Z"
+              fill="none"
+              stroke="white"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M12 9L13 12L12 15L11 12L12 9Z"
+              fill="white"
+              opacity="0.95"
+            />
           </svg>
           {/* Pulsing ring */}
           <span className="absolute -inset-1 rounded-[20px] border border-purple-500/30 animate-ping opacity-40" aria-hidden="true" />

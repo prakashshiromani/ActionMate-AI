@@ -3,6 +3,7 @@
 import React, { useRef, useEffect } from "react";
 import ConflictBanner from "@/components/ConflictBanner";
 import { playConflictAlert } from "@/lib/sounds";
+import { auth } from "@/lib/firebase";
 
 interface MockTask {
   id: string;
@@ -84,11 +85,15 @@ export default function DashboardView({
 
   // Helper for dynamic greeting
   const getGreeting = () => {
-    if (!mounted) return "Hello, Aryan!";
+    const fullName = auth?.currentUser?.displayName || auth?.currentUser?.email?.split("@")[0] || "Aryan";
+    const firstName = fullName.split(" ")[0];
+    const capitalizedName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+
+    if (!mounted) return `Hello, ${capitalizedName}!`;
     const hr = new Date().getHours();
-    if (hr < 12) return "Good morning, Aryan!";
-    if (hr < 17) return "Good afternoon, Aryan!";
-    return "Good evening, Aryan!";
+    if (hr < 12) return `Good morning, ${capitalizedName}!`;
+    if (hr < 17) return `Good afternoon, ${capitalizedName}!`;
+    return `Good evening, ${capitalizedName}!`;
   };
 
   // Parse deadlineText into a Date (best-effort)

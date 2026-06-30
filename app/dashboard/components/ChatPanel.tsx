@@ -3,6 +3,7 @@
 import React, { ReactNode, useState, useEffect, useRef } from "react";
 import AgentActionCard from "@/components/AgentActionCard";
 import { PendingAction } from "@/types";
+import { auth } from "@/lib/firebase";
 
 function MessageTimestamp({ timestamp }: { timestamp: Date }) {
   const [label, setLabel] = useState<string | null>(null);
@@ -93,6 +94,10 @@ export default function ChatPanel({
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
 
+  const fullName = auth?.currentUser?.displayName || auth?.currentUser?.email?.split("@")[0] || "Aryan";
+  const firstName = fullName.split(" ")[0];
+  const capitalizedName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+
   const handleMouseDown = (e: React.MouseEvent) => {
     const el = scrollRef.current;
     if (!el) return;
@@ -120,7 +125,7 @@ export default function ChatPanel({
 
   return (
     <aside
-      className={`fixed inset-y-0 right-0 z-20 w-full flex flex-col transform md:relative md:translate-x-0 ${
+      className={`fixed inset-y-0 right-0 z-20 w-full flex flex-col pb-[88px] md:pb-0 transform md:relative md:translate-x-0 ${
         isResizing ? "" : "transition-all duration-300"
       } ${chatOpen ? "translate-x-0" : "translate-x-full"}`}
       style={{
@@ -171,9 +176,16 @@ export default function ChatPanel({
             onClick={handleClearChat}
             title="Clear Chat History"
             aria-label="Clear Chat History"
-            className="text-text-muted hover:text-error text-xs p-1.5 rounded-lg hover:bg-error/5 transition-colors border border-transparent hover:border-error/10 cursor-pointer"
+            className="text-text-muted hover:text-error text-xs p-1.5 rounded-lg hover:bg-error/5 transition-colors border border-transparent hover:border-error/10 cursor-pointer flex items-center justify-center"
           >
-            🗑️
+            {/* Trash icon — Lucide style */}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" />
+              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
           </button>
           
           {/* Desktop collapse button */}
@@ -181,9 +193,14 @@ export default function ChatPanel({
             onClick={() => setChatOpen(false)}
             title="Collapse Assistant Panel"
             aria-label="Collapse Assistant Panel"
-            className="text-text-muted hover:text-text-primary text-xs p-1.5 rounded-lg hover:bg-bg-raised transition-colors border border-transparent hover:border-border/30 cursor-pointer hidden md:block"
+            className="text-text-muted hover:text-text-primary text-xs p-1.5 rounded-lg hover:bg-bg-raised transition-colors border border-transparent hover:border-border/30 cursor-pointer hidden md:flex items-center justify-center"
           >
-            ➡️
+            {/* Collapse panel right icon — Lucide style */}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8L22 12L18 16" />
+              <path d="M22 12H10" />
+              <path d="M2 4V20" />
+            </svg>
           </button>
 
           {/* Mobile close button */}
@@ -213,7 +230,7 @@ export default function ChatPanel({
               <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-bg-surface animate-pulse" />
             </div>
             <div className="space-y-1.5">
-              <h4 className="font-extrabold text-sm text-text-primary">How can I help you, Aryan?</h4>
+              <h4 className="font-extrabold text-sm text-text-primary">How can I help you, {capitalizedName}?</h4>
               <p className="text-[11px] text-text-muted max-w-[220px] leading-relaxed mx-auto">
                 I can sync calendar slots, draft email confirmations, and resolve scheduling conflicts autonomously.
               </p>

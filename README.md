@@ -157,5 +157,5 @@ firebase deploy
 ## 🎯 Submission Context (Vibe2Ship Hackathon)
 * **Problem Statement**: PS1 — The Last-Minute Life Saver
 * **Selected Tech Stack**: Next.js 16 · React 19 · Tailwind CSS v4 · Gemini Flash (AI Studio) · Cloud Firestore · Firebase Auth · Firebase Hosting · Google Workspace APIs
-* **Project Documentation**: Available under [/docs](file:///c:/Users/Prakash%20Max/OneDrive/Desktop/google%20%20project/docs) directory.
-* **Submission Google Doc Draft**: Copy/paste ready contents located at [google_doc_draft.md](file:///C:/Users/Prakash%20Max/.gemini/antigravity/brain/e230fccc-39b0-4194-8ace-f56346709950/google_doc_draft.md).
+* **Project Documentation**: Available under [docs/](./docs) directory.
+* **Submission Google Doc Draft**: Copy/paste ready contents located at [google_doc_draft.md](./google_doc_draft.md).

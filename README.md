@@ -74,12 +74,7 @@ actionmate-ai/
 │   ├── googleCalendar.ts         # Calendar list & insert wrappers
 │   └── gmail.ts                  # Gmail draft creation wrapper
 ├── types/                        # Shared TypeScript structures
-│   └── index.ts                  # Typings for Task, Action, User preferences
-├── docs/                         # Hackathon submissions documents
-│   ├── prd_v2.md                 # Product Requirements Document
-│   ├── trd_v2.md                 # Technical Requirements Document
-│   ├── ui_ux_v2.md               # UI/UX Brief
-│   └── Implementation_Plan_v2.md # Phase-wise execution schedule
+│   └── index.ts                  # Typings for Task, Action, User 
 ```
 
 ---

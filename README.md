@@ -170,4 +170,3 @@ The application is fully prepared and optimized for serverless deployment on **V
 * **Problem Statement**: PS1 — The Last-Minute Life Saver
 * **Selected Tech Stack**: Next.js 16 · React 19 · Tailwind CSS v4 · Gemini Flash (AI Studio) · Cloud Firestore · Firebase Auth · Vercel · Google Workspace APIs
 * **Project Documentation**: Available under [docs/](./docs) directory.
-* **Submission Google Doc Draft**: Copy/paste ready contents located at [google_doc_draft.md](./google_doc_draft.md).

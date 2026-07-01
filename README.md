@@ -129,28 +129,45 @@ FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
 
 ---
 
-## ☁️ Google Cloud Deployment
+## ☁️ Vercel Deployment
 
-The application is fully prepared for global serverless hosting on **Firebase Hosting** backed by **Cloud Run**.
+The application is fully prepared and optimized for serverless deployment on **Vercel**.
 
-```bash
-# Install Firebase CLI globally
-npm install -g firebase-tools
+### Setup & Deployment Steps
 
-# Login to Google Cloud Firebase
-firebase login
+1. **Deploy to Vercel**: 
+   * Push your code to a GitHub, GitLab, or Bitbucket repository.
+   * Import the project on the Vercel Dashboard.
 
-# Initialize project hosting settings
-firebase init
+2. **Configure Environment Variables**:
+   In your Vercel Project Settings, add the environment variables defined in your `.env.local` file:
+   * `GEMINI_API_KEY`: Your Gemini API Key from Google AI Studio.
+   * `NEXT_PUBLIC_FIREBASE_API_KEY`: Client Firebase API Key.
+   * `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`: Firebase Auth Domain.
+   * `NEXT_PUBLIC_FIREBASE_PROJECT_ID`: Firebase Project ID.
+   * `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`: Firebase Storage Bucket.
+   * `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`: Firebase Messaging Sender ID.
+   * `NEXT_PUBLIC_FIREBASE_APP_ID`: Firebase App ID.
+   * `FIREBASE_ADMIN_PROJECT_ID`: Firebase Admin Project ID.
+   * `FIREBASE_ADMIN_CLIENT_EMAIL`: Firebase Admin Service Account Client Email.
+   * `FIREBASE_ADMIN_PRIVATE_KEY`: Firebase Admin Service Account Private Key (ensure the newline characters `\n` are properly parsed or paste the multi-line key).
 
-# Deploy compiled pages and serverless API endpoints
-firebase deploy
-```
+3. **Alternative: Deploy via Vercel CLI**:
+   ```bash
+   # Install Vercel CLI globally
+   npm install -g vercel
+
+   # Login to Vercel
+   vercel login
+
+   # Deploy the project
+   vercel
+   ```
 
 ---
 
 ## 🎯 Submission Context (Vibe2Ship Hackathon)
 * **Problem Statement**: PS1 — The Last-Minute Life Saver
-* **Selected Tech Stack**: Next.js 16 · React 19 · Tailwind CSS v4 · Gemini Flash (AI Studio) · Cloud Firestore · Firebase Auth · Firebase Hosting · Google Workspace APIs
+* **Selected Tech Stack**: Next.js 16 · React 19 · Tailwind CSS v4 · Gemini Flash (AI Studio) · Cloud Firestore · Firebase Auth · Vercel · Google Workspace APIs
 * **Project Documentation**: Available under [docs/](./docs) directory.
 * **Submission Google Doc Draft**: Copy/paste ready contents located at [google_doc_draft.md](./google_doc_draft.md).
